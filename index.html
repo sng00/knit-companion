@@ -37,9 +37,30 @@
       box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
     }
 
-    /* Center PDF in its container */
+    /* Scrollable, centered PDF container */
     #pdfCanvasContainer {
-      min-height: 100%;
+      overflow: auto;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+
+    /* Wrapper so we can overlay highlight on top of canvas */
+    #pdfWrapper {
+      position: relative;
+    }
+
+    /* Row highlight bar */
+    #rowHighlight {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 40px;
+      background: rgba(14, 165, 233, 0.2); /* tailwind sky-500-ish */
+      border-top: 1px solid rgba(56, 189, 248, 0.8);
+      border-bottom: 1px solid rgba(56, 189, 248, 0.8);
+      cursor: grab;
+      display: none; /* hidden until a PDF is loaded */
     }
 
     /* Resizer styling (desktop only) */
@@ -59,13 +80,21 @@
     }
 
     @media (max-width: 767px) {
-      /* On small screens, sidebar takes full width & drag handle is hidden */
       #sidebar {
         width: 100% !important;
       }
       #dragHandle {
         display: none !important;
       }
+    }
+
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    input[type="number"] {
+      -moz-appearance: textfield;
     }
   </style>
 </head>
@@ -154,9 +183,12 @@
       <div class="flex-1 overflow-auto relative bg-gray-200">
         <div
           id="pdfCanvasContainer"
-          class="w-full h-full flex items-center justify-center p-4 box-border"
+          class="w-full h-full p-4 box-border"
         >
-          <canvas id="pdfCanvas" class="touch-none"></canvas>
+          <div id="pdfWrapper">
+            <canvas id="pdfCanvas" class="touch-none"></canvas>
+            <div id="rowHighlight"></div>
+          </div>
         </div>
         <div
           id="loadingMessage"
@@ -183,8 +215,26 @@
       <!-- Scrollable content -->
       <div class="flex-1 overflow-y-auto p-4 space-y-6">
         <!-- Row Counter Section -->
-        <div class="bg-gray-900 rounded-lg p-4 shadow-md">
-          <h2 class="text-lg font-semibold mb-2 text-white">Row Counter</h2>
+        <div class="bg-gray-900 rounded-lg p-4 shadow-md space-y-3">
+          <div class="flex items-center justify-between gap-2">
+            <h2 class="text-lg font-semibold text-white">Row Counter</h2>
+            <div class="flex items-center gap-1">
+              <input
+                id="rowInput"
+                type="number"
+                min="0"
+                class="w-16 text-sm rounded bg-gray-800 border border-gray-700 text-gray-100 px-2 py-1 focus:outline-none"
+                placeholder="#"
+              />
+              <button
+                id="setRowBtn"
+                class="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-100"
+              >
+                Set
+              </button>
+            </div>
+          </div>
+
           <div class="flex items-center gap-3">
             <button
               id="decreaseRow"
@@ -204,11 +254,33 @@
               <i class="fas fa-plus"></i>
             </button>
           </div>
+          <p class="text-xs text-gray-400">
+            Drag the blue bar on the PDF to mark your current row,
+            or nudge it with the + / − buttons.
+          </p>
         </div>
 
         <!-- Repeat Counter Section -->
-        <div class="bg-gray-900 rounded-lg p-4 shadow-md">
-          <h2 class="text-lg font-semibold mb-2 text-white">Repeat Counter</h2>
+        <div class="bg-gray-900 rounded-lg p-4 shadow-md space-y-3">
+          <div class="flex items-center justify-between gap-2">
+            <h2 class="text-lg font-semibold text-white">Repeat Counter</h2>
+            <div class="flex items-center gap-1">
+              <input
+                id="repeatInput"
+                type="number"
+                min="0"
+                class="w-16 text-sm rounded bg-gray-800 border border-gray-700 text-gray-100 px-2 py-1 focus:outline-none"
+                placeholder="#"
+              />
+              <button
+                id="setRepeatBtn"
+                class="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-100"
+              >
+                Set
+              </button>
+            </div>
+          </div>
+
           <div class="flex items-center gap-3">
             <button
               id="decreaseRepeat"
@@ -250,6 +322,8 @@
     const ctx = pdfCanvas.getContext("2d");
     const loadingMessage = document.getElementById("loadingMessage");
     const pdfCanvasContainer = document.getElementById("pdfCanvasContainer");
+    const pdfWrapper = document.getElementById("pdfWrapper");
+    const rowHighlight = document.getElementById("rowHighlight");
 
     const prevPageBtn = document.getElementById("prevPageBtn");
     const nextPageBtn = document.getElementById("nextPageBtn");
@@ -265,6 +339,11 @@
     const rowDisplay = document.getElementById("rowCountDisplay");
     const repeatDisplay = document.getElementById("repeatCountDisplay");
     const notesArea = document.getElementById("notesArea");
+
+    const rowInput = document.getElementById("rowInput");
+    const setRowBtn = document.getElementById("setRowBtn");
+    const repeatInput = document.getElementById("repeatInput");
+    const setRepeatBtn = document.getElementById("setRepeatBtn");
 
     const sidebar = document.getElementById("sidebar");
     const dragHandle = document.getElementById("dragHandle");
@@ -282,9 +361,13 @@
     let rowCount = 0;
     let repeatCount = 0;
     let zoomLevel = 1; // 1 = 100%
+    let highlightYRatio = null; // 0–1 relative vertical position on canvas
+
     const MIN_ZOOM = 0.5;
     const MAX_ZOOM = 3;
     const ZOOM_STEP = 0.1;
+
+    const HIGHLIGHT_HEIGHT = 40;
 
     // Helpers for base64 <-> ArrayBuffer
     function arrayBufferToBase64(buffer) {
@@ -310,9 +393,7 @@
     function safeSave(key, value) {
       try {
         localStorage.setItem(key, value);
-      } catch (e) {
-        // ignore (e.g., private mode or quota exceeded)
-      }
+      } catch (e) {}
     }
 
     function safeLoad(key) {
@@ -330,7 +411,8 @@
         repeatCount,
         notes: notesArea.value || "",
         zoomLevel,
-        sidebarWidth: sidebar.style.width || ""
+        sidebarWidth: sidebar.style.width || "",
+        highlightYRatio,
       };
       safeSave(STORAGE_STATE_KEY, JSON.stringify(state));
     }
@@ -367,11 +449,43 @@
         if (state.sidebarWidth) {
           sidebar.style.width = state.sidebarWidth;
         }
+        if (typeof state.highlightYRatio === "number") {
+          highlightYRatio = state.highlightYRatio;
+        }
         updateZoomLabel();
         return state;
       } catch (e) {
         return null;
       }
+    }
+
+    // --- Row highlight helpers ---
+    function showHighlight() {
+      rowHighlight.style.display = "block";
+    }
+
+    function updateHighlightPositionFromRatio() {
+      if (!pdfCanvas.height || highlightYRatio == null) return;
+      const maxTop = pdfCanvas.height - HIGHLIGHT_HEIGHT;
+      let top = highlightYRatio * pdfCanvas.height - HIGHLIGHT_HEIGHT / 2;
+      top = Math.min(maxTop, Math.max(0, top));
+      rowHighlight.style.top = top + "px";
+      rowHighlight.style.height = HIGHLIGHT_HEIGHT + "px";
+    }
+
+    function nudgeHighlight(deltaRows) {
+      if (!pdfCanvas.height) return;
+      showHighlight();
+      const currentTop =
+        parseFloat(rowHighlight.style.top || "0") || 0;
+      const deltaPixels = deltaRows * HIGHLIGHT_HEIGHT;
+      const maxTop = pdfCanvas.height - HIGHLIGHT_HEIGHT;
+      let newTop = currentTop + deltaPixels;
+      newTop = Math.min(maxTop, Math.max(0, newTop));
+      rowHighlight.style.top = newTop + "px";
+      highlightYRatio =
+        (newTop + HIGHLIGHT_HEIGHT / 2) / pdfCanvas.height;
+      saveState();
     }
 
     // --- PDF loading + rendering ---
@@ -382,11 +496,15 @@
 
       const page = await pdfDoc.getPage(num);
 
-      // Start with scale = 1, then fit to container width
+      // Preserve scroll position
+      const prevHeight = pdfCanvas.height || 1;
+      const prevScroll = pdfCanvasContainer.scrollTop;
+
+      // Base size with scale=1
       const initialViewport = page.getViewport({ scale: 1 });
+
       const containerWidth =
         pdfCanvasContainer.clientWidth || window.innerWidth;
-
       const fitScale = containerWidth / initialViewport.width;
       const scale = fitScale * zoomLevel;
 
@@ -395,7 +513,22 @@
       pdfCanvas.width = viewport.width;
       pdfCanvas.height = viewport.height;
 
+      pdfWrapper.style.width = pdfCanvas.width + "px";
+      pdfWrapper.style.height = pdfCanvas.height + "px";
+
       await page.render({ canvasContext: ctx, viewport }).promise;
+
+      // Restore scroll position proportionally
+      const heightRatio = pdfCanvas.height / prevHeight;
+      pdfCanvasContainer.scrollTop = prevScroll * heightRatio;
+
+      // Ensure highlight is visible and positioned
+      showHighlight();
+      if (highlightYRatio == null) {
+        // If no saved position, start roughly 1/3 from top
+        highlightYRatio = 0.33;
+      }
+      updateHighlightPositionFromRatio();
 
       loadingMessage.classList.add("hidden");
       pageNumEl.textContent = num;
@@ -403,7 +536,6 @@
     }
 
     async function loadPDF(data) {
-      // Ensure we always feed pdf.js a Uint8Array
       let pdfData = data;
       if (data instanceof ArrayBuffer) {
         pdfData = new Uint8Array(data);
@@ -414,8 +546,11 @@
       pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
       pageCountEl.textContent = pdfDoc.numPages;
 
-      // Ensure page is in range
-      if (!currentPage || currentPage < 1 || currentPage > pdfDoc.numPages) {
+      if (
+        !currentPage ||
+        currentPage < 1 ||
+        currentPage > pdfDoc.numPages
+      ) {
         currentPage = 1;
       }
 
@@ -433,9 +568,9 @@
           // Reset view state
           currentPage = 1;
           zoomLevel = 1;
+          highlightYRatio = null;
           updateZoomLabel();
 
-          // Save PDF to localStorage as base64 (might fail if too large)
           const base64 = arrayBufferToBase64(pdfData);
           safeSave(STORAGE_PDF_KEY, base64);
 
@@ -453,9 +588,7 @@
         try {
           const buffer = base64ToArrayBuffer(pdfBase64);
           loadPDF(buffer);
-        } catch (e) {
-          // ignore decode failures
-        }
+        } catch (e) {}
       }
     })();
 
@@ -497,43 +630,113 @@
     });
 
     // --- Counters & notes ---
-    document.getElementById("increaseRow").onclick = () => {
-      rowCount++;
+    function setRowCount(value) {
+      const v = Math.max(0, Number.isFinite(value) ? value : 0);
+      rowCount = v;
       rowDisplay.textContent = rowCount;
       saveState();
+    }
+
+    function setRepeatCount(value) {
+      const v = Math.max(0, Number.isFinite(value) ? value : 0);
+      repeatCount = v;
+      repeatDisplay.textContent = repeatCount;
+      saveState();
+    }
+
+    document.getElementById("increaseRow").onclick = () => {
+      setRowCount(rowCount + 1);
+      nudgeHighlight(1);
     };
     document.getElementById("decreaseRow").onclick = () => {
-      if (rowCount > 0) rowCount--;
-      rowDisplay.textContent = rowCount;
-      saveState();
+      if (rowCount > 0) {
+        setRowCount(rowCount - 1);
+        nudgeHighlight(-1);
+      }
     };
 
     document.getElementById("increaseRepeat").onclick = () => {
-      repeatCount++;
-      repeatDisplay.textContent = repeatCount;
-      saveState();
+      setRepeatCount(repeatCount + 1);
     };
     document.getElementById("decreaseRepeat").onclick = () => {
-      if (repeatCount > 0) repeatCount--;
-      repeatDisplay.textContent = repeatCount;
-      saveState();
+      if (repeatCount > 0) setRepeatCount(repeatCount - 1);
     };
 
     notesArea.addEventListener("input", () => {
       saveState();
     });
 
-    // --- Sidebar resizer (desktop) ---
-    let isDragging = false;
+    // Manual row input
+    function applyRowInput() {
+      const val = parseInt(rowInput.value, 10);
+      if (!isNaN(val) && val >= 0) {
+        setRowCount(val);
+      }
+    }
+    setRowBtn.addEventListener("click", applyRowInput);
+    rowInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") applyRowInput();
+    });
 
-    dragHandle.addEventListener("mousedown", (e) => {
-      isDragging = true;
+    function applyRepeatInput() {
+      const val = parseInt(repeatInput.value, 10);
+      if (!isNaN(val) && val >= 0) {
+        setRepeatCount(val);
+      }
+    }
+    setRepeatBtn.addEventListener("click", applyRepeatInput);
+    repeatInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") applyRepeatInput();
+    });
+
+    // --- Row highlight dragging ---
+    let draggingHighlight = false;
+    let dragStartY = 0;
+    let highlightStartTop = 0;
+
+    rowHighlight.addEventListener("mousedown", (e) => {
+      draggingHighlight = true;
+      dragStartY = e.clientY;
+      highlightStartTop =
+        parseFloat(rowHighlight.style.top || "0") || 0;
+      rowHighlight.style.cursor = "grabbing";
       document.body.style.userSelect = "none";
       e.preventDefault();
     });
 
     window.addEventListener("mousemove", (e) => {
-      if (!isDragging) return;
+      if (!draggingHighlight) return;
+      if (!pdfCanvas.height) return;
+
+      const delta = e.clientY - dragStartY;
+      const maxTop = pdfCanvas.height - HIGHLIGHT_HEIGHT;
+      let newTop = highlightStartTop + delta;
+      newTop = Math.min(maxTop, Math.max(0, newTop));
+      rowHighlight.style.top = newTop + "px";
+      highlightYRatio =
+        (newTop + HIGHLIGHT_HEIGHT / 2) / pdfCanvas.height;
+    });
+
+    window.addEventListener("mouseup", () => {
+      if (draggingHighlight) {
+        draggingHighlight = false;
+        rowHighlight.style.cursor = "grab";
+        document.body.style.userSelect = "";
+        saveState();
+      }
+    });
+
+    // --- Sidebar resizer (desktop) ---
+    let isDraggingSidebar = false;
+
+    dragHandle.addEventListener("mousedown", (e) => {
+      isDraggingSidebar = true;
+      document.body.style.userSelect = "none";
+      e.preventDefault();
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      if (!isDraggingSidebar) return;
 
       const mainRect = mainContainer.getBoundingClientRect();
       const newSidebarWidth = mainRect.right - e.clientX;
@@ -547,15 +750,14 @@
 
       sidebar.style.width = clampedWidth + "px";
 
-      // Re-render PDF so it re-fits into its new space
       if (pdfDoc) {
         renderPage(currentPage);
       }
     });
 
     window.addEventListener("mouseup", () => {
-      if (isDragging) {
-        isDragging = false;
+      if (isDraggingSidebar) {
+        isDraggingSidebar = false;
         document.body.style.userSelect = "";
         saveState();
       }
@@ -564,11 +766,11 @@
     // --- Clear saved data ---
     clearStateBtn.addEventListener("click", () => {
       clearState();
-      // Reset UI
       rowCount = 0;
       repeatCount = 0;
       zoomLevel = 1;
       currentPage = 1;
+      highlightYRatio = null;
       rowDisplay.textContent = "0";
       repeatDisplay.textContent = "0";
       notesArea.value = "";
@@ -578,6 +780,7 @@
       pageCountEl.textContent = "?";
       const ctx2 = pdfCanvas.getContext("2d");
       ctx2.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
+      rowHighlight.style.display = "none";
     });
   </script>
 </body>
