@@ -83,38 +83,71 @@
         id="pdfToolbar"
         class="bg-gray-800 border-b border-gray-700 p-3 flex items-center justify-between gap-2 z-10 shadow-xl flex-none"
       >
-        <!-- Page Navigation Group -->
-        <div class="flex items-center gap-2">
-          <button
-            id="prevPageBtn"
-            class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors shadow-sm flex items-center gap-2"
-          >
-            <i class="fas fa-chevron-left"></i>
-            <span class="hidden md:inline">Prev</span>
-          </button>
+        <!-- Left side: navigation + zoom -->
+        <div class="flex items-center gap-4">
+          <!-- Page Navigation Group -->
+          <div class="flex items-center gap-2">
+            <button
+              id="prevPageBtn"
+              class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors shadow-sm flex items-center gap-2"
+            >
+              <i class="fas fa-chevron-left"></i>
+              <span class="hidden md:inline">Prev</span>
+            </button>
 
-          <button
-            id="nextPageBtn"
-            class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors shadow-sm flex items-center gap-2"
-          >
-            <i class="fas fa-chevron-right"></i>
-            <span class="hidden md:inline">Next</span>
-          </button>
+            <button
+              id="nextPageBtn"
+              class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors shadow-sm flex items-center gap-2"
+            >
+              <i class="fas fa-chevron-right"></i>
+              <span class="hidden md:inline">Next</span>
+            </button>
 
-          <span class="text-sm md:text-base text-gray-300 ml-2">
-            Page <span id="pageNum">1</span> / <span id="pageCount">?</span>
-          </span>
+            <span class="text-sm md:text-base text-gray-300 ml-2">
+              Page <span id="pageNum">1</span> / <span id="pageCount">?</span>
+            </span>
+          </div>
+
+          <!-- Zoom Controls -->
+          <div class="flex items-center gap-2">
+            <button
+              id="zoomOutBtn"
+              class="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded text-xs shadow-sm"
+              title="Zoom out"
+            >
+              <i class="fas fa-minus"></i>
+            </button>
+            <span id="zoomLabel" class="text-xs text-gray-300 w-12 text-center">100%</span>
+            <button
+              id="zoomInBtn"
+              class="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded text-xs shadow-sm"
+              title="Zoom in"
+            >
+              <i class="fas fa-plus"></i>
+            </button>
+          </div>
         </div>
 
-        <!-- Upload Button -->
-        <label
-          class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded cursor-pointer shadow-md transition-colors flex items-center gap-2"
-        >
-          <i class="fas fa-file-upload"></i>
-          <span class="hidden sm:inline">Upload Pattern</span>
-          <span class="sm:hidden">Upload</span>
-          <input type="file" id="fileInput" accept="application/pdf" class="hidden" />
-        </label>
+        <!-- Right side: Upload + Clear -->
+        <div class="flex items-center gap-2">
+          <button
+            id="clearStateBtn"
+            class="px-3 py-2 bg-red-600 hover:bg-red-500 text-white rounded text-xs md:text-sm shadow-sm"
+            title="Clear saved pattern & counters"
+          >
+            Clear Saved
+          </button>
+
+          <!-- Upload Button -->
+          <label
+            class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded cursor-pointer shadow-md transition-colors flex items-center gap-2"
+          >
+            <i class="fas fa-file-upload"></i>
+            <span class="hidden sm:inline">Upload Pattern</span>
+            <span class="sm:hidden">Upload</span>
+            <input type="file" id="fileInput" accept="application/pdf" class="hidden" />
+          </label>
+        </div>
       </div>
 
       <!-- PDF Canvas Area -->
@@ -211,31 +244,137 @@
 
   <!-- JavaScript -->
   <script>
+    // --- DOM references ---
     const fileInput = document.getElementById("fileInput");
     const pdfCanvas = document.getElementById("pdfCanvas");
     const ctx = pdfCanvas.getContext("2d");
     const loadingMessage = document.getElementById("loadingMessage");
     const pdfCanvasContainer = document.getElementById("pdfCanvasContainer");
 
+    const prevPageBtn = document.getElementById("prevPageBtn");
+    const nextPageBtn = document.getElementById("nextPageBtn");
+    const pageNumEl = document.getElementById("pageNum");
+    const pageCountEl = document.getElementById("pageCount");
+
+    const zoomInBtn = document.getElementById("zoomInBtn");
+    const zoomOutBtn = document.getElementById("zoomOutBtn");
+    const zoomLabel = document.getElementById("zoomLabel");
+
+    const clearStateBtn = document.getElementById("clearStateBtn");
+
+    const rowDisplay = document.getElementById("rowCountDisplay");
+    const repeatDisplay = document.getElementById("repeatCountDisplay");
+    const notesArea = document.getElementById("notesArea");
+
+    const sidebar = document.getElementById("sidebar");
+    const dragHandle = document.getElementById("dragHandle");
+    const mainContainer = document.getElementById("mainContainer");
+
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
+    // --- State + persistence ---
+    const STORAGE_STATE_KEY = "knitCompanionState";
+    const STORAGE_PDF_KEY = "knitCompanionPdfBase64";
+
     let pdfDoc = null;
     let currentPage = 1;
+    let rowCount = 0;
+    let repeatCount = 0;
+    let zoomLevel = 1; // 1 = 100%
+    const MIN_ZOOM = 0.5;
+    const MAX_ZOOM = 3;
+    const ZOOM_STEP = 0.1;
 
-    // Load PDF from file input
-    fileInput.addEventListener("change", (e) => {
-      const file = e.target.files[0];
-      if (file && file.type === "application/pdf") {
-        const reader = new FileReader();
-        reader.onload = function (event) {
-          const pdfData = event.target.result;
-          loadPDF(pdfData);
-        };
-        reader.readAsArrayBuffer(file);
+    // Helpers for base64 <-> ArrayBuffer
+    function arrayBufferToBase64(buffer) {
+      let binary = "";
+      const bytes = new Uint8Array(buffer);
+      const len = bytes.byteLength;
+      for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
       }
-    });
+      return btoa(binary);
+    }
 
+    function base64ToArrayBuffer(base64) {
+      const binary = atob(base64);
+      const len = binary.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes.buffer;
+    }
+
+    function safeSave(key, value) {
+      try {
+        localStorage.setItem(key, value);
+      } catch (e) {
+        // ignore (e.g., private mode or quota exceeded)
+      }
+    }
+
+    function safeLoad(key) {
+      try {
+        return localStorage.getItem(key);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function saveState() {
+      const state = {
+        currentPage,
+        rowCount,
+        repeatCount,
+        notes: notesArea.value || "",
+        zoomLevel,
+        sidebarWidth: sidebar.style.width || ""
+      };
+      safeSave(STORAGE_STATE_KEY, JSON.stringify(state));
+    }
+
+    function clearState() {
+      try {
+        localStorage.removeItem(STORAGE_STATE_KEY);
+        localStorage.removeItem(STORAGE_PDF_KEY);
+      } catch (e) {}
+    }
+
+    function restoreState() {
+      const stateRaw = safeLoad(STORAGE_STATE_KEY);
+      if (!stateRaw) return null;
+      try {
+        const state = JSON.parse(stateRaw);
+        if (typeof state.rowCount === "number") {
+          rowCount = state.rowCount;
+          rowDisplay.textContent = rowCount;
+        }
+        if (typeof state.repeatCount === "number") {
+          repeatCount = state.repeatCount;
+          repeatDisplay.textContent = repeatCount;
+        }
+        if (typeof state.currentPage === "number") {
+          currentPage = state.currentPage;
+        }
+        if (typeof state.zoomLevel === "number") {
+          zoomLevel = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, state.zoomLevel));
+        }
+        if (typeof state.notes === "string") {
+          notesArea.value = state.notes;
+        }
+        if (state.sidebarWidth) {
+          sidebar.style.width = state.sidebarWidth;
+        }
+        updateZoomLabel();
+        return state;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // --- PDF loading + rendering ---
     async function renderPage(num) {
       if (!pdfDoc) return;
 
@@ -248,115 +387,4 @@
       const containerWidth =
         pdfCanvasContainer.clientWidth || window.innerWidth;
 
-      const fitScale = containerWidth / initialViewport.width;
-      const scale = fitScale; // you can clamp this if you want a max
-
-      const viewport = page.getViewport({ scale });
-
-      pdfCanvas.width = viewport.width;
-      pdfCanvas.height = viewport.height;
-
-      await page.render({ canvasContext: ctx, viewport }).promise;
-
-      loadingMessage.classList.add("hidden");
-      document.getElementById("pageNum").textContent = num;
-    }
-
-    async function loadPDF(data) {
-      pdfDoc = await pdfjsLib.getDocument(data).promise;
-      document.getElementById("pageCount").textContent = pdfDoc.numPages;
-      currentPage = 1;
-      renderPage(currentPage);
-    }
-
-    // Navigation buttons
-    document
-      .getElementById("prevPageBtn")
-      .addEventListener("click", () => {
-        if (!pdfDoc || currentPage <= 1) return;
-        currentPage--;
-        renderPage(currentPage);
-      });
-
-    document
-      .getElementById("nextPageBtn")
-      .addEventListener("click", () => {
-        if (!pdfDoc || currentPage >= pdfDoc.numPages) return;
-        currentPage++;
-        renderPage(currentPage);
-      });
-
-    // Re-fit page when window resizes
-    window.addEventListener("resize", () => {
-      if (pdfDoc) {
-        renderPage(currentPage);
-      }
-    });
-
-    // Row counter
-    let rowCount = 0;
-    const rowDisplay = document.getElementById("rowCountDisplay");
-    document.getElementById("increaseRow").onclick = () => {
-      rowCount++;
-      rowDisplay.textContent = rowCount;
-    };
-    document.getElementById("decreaseRow").onclick = () => {
-      if (rowCount > 0) rowCount--;
-      rowDisplay.textContent = rowCount;
-    };
-
-    // Repeat counter
-    let repeatCount = 0;
-    const repeatDisplay = document.getElementById("repeatCountDisplay");
-    document.getElementById("increaseRepeat").onclick = () => {
-      repeatCount++;
-      repeatDisplay.textContent = repeatCount;
-    };
-    document.getElementById("decreaseRepeat").onclick = () => {
-      if (repeatCount > 0) repeatCount--;
-      repeatDisplay.textContent = repeatCount;
-    };
-
-    // Sidebar resizer (desktop)
-    const sidebar = document.getElementById("sidebar");
-    const dragHandle = document.getElementById("dragHandle");
-    const mainContainer = document.getElementById("mainContainer");
-
-    let isDragging = false;
-
-    dragHandle.addEventListener("mousedown", (e) => {
-      isDragging = true;
-      document.body.style.userSelect = "none";
-      e.preventDefault();
-    });
-
-    window.addEventListener("mousemove", (e) => {
-      if (!isDragging) return;
-
-      const mainRect = mainContainer.getBoundingClientRect();
-      const newSidebarWidth = mainRect.right - e.clientX;
-
-      const minWidth = 220;
-      const maxWidth = 500;
-      const clampedWidth = Math.min(
-        maxWidth,
-        Math.max(minWidth, newSidebarWidth)
-      );
-
-      sidebar.style.width = clampedWidth + "px";
-
-      // Re-render PDF so it re-fits into its new space
-      if (pdfDoc) {
-        renderPage(currentPage);
-      }
-    });
-
-    window.addEventListener("mouseup", () => {
-      if (isDragging) {
-        isDragging = false;
-        document.body.style.userSelect = "";
-      }
-    });
-  </script>
-</body>
-</html>
+      const fitScale = containerWidth
