@@ -1,193 +1,362 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>PDF Pattern Companion</title>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+  />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Knit Companion – PDF Pattern Helper</title>
 
-<!-- Tailwind CSS -->
-<script src="https://cdn.tailwindcss.com"></script>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
 
-<!-- PDF.js -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- PDF.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
-<!-- FontAwesome -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- FontAwesome -->
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+  />
 
-<style>
-  body {
-    -webkit-tap-highlight-color: transparent;
-    overscroll-behavior: none;
-  }
-  #pdfCanvas {
-    touch-action: none;
-  }
-</style>
+  <style>
+    body {
+      -webkit-tap-highlight-color: transparent;
+      overscroll-behavior: none;
+    }
+
+    /* Keep canvas from stretching; use intrinsic size */
+    #pdfCanvas {
+      display: block;
+      max-width: 100%;
+      height: auto;
+      background: white;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+    }
+
+    /* Center PDF in its container */
+    #pdfCanvasContainer {
+      min-height: 100%;
+    }
+
+    /* Resizer styling (desktop only) */
+    #dragHandle {
+      cursor: col-resize;
+      transition: background-color 0.15s ease;
+    }
+
+    #dragHandle:hover {
+      background-color: rgb(75 85 99); /* gray-600 */
+    }
+
+    /* Sidebar width constraints for resizing */
+    #sidebar {
+      min-width: 220px;
+      max-width: 500px;
+    }
+
+    @media (max-width: 767px) {
+      /* On small screens, sidebar takes full width & drag handle is hidden */
+      #sidebar {
+        width: 100% !important;
+      }
+      #dragHandle {
+        display: none !important;
+      }
+    }
+  </style>
 </head>
 
 <body class="bg-gray-900 h-screen flex flex-col overflow-hidden text-gray-100 font-sans">
+  <!-- Main Content Area -->
+  <main
+    id="mainContainer"
+    class="flex-1 flex flex-col md:flex-row overflow-hidden relative"
+  >
+    <!-- PDF Viewer Section -->
+    <div class="flex-1 flex flex-col relative bg-gray-100 h-full min-w-0">
+      <!-- PDF Toolbar -->
+      <div
+        id="pdfToolbar"
+        class="bg-gray-800 border-b border-gray-700 p-3 flex items-center justify-between gap-2 z-10 shadow-xl flex-none"
+      >
+        <!-- Page Navigation Group -->
+        <div class="flex items-center gap-2">
+          <button
+            id="prevPageBtn"
+            class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors shadow-sm flex items-center gap-2"
+          >
+            <i class="fas fa-chevron-left"></i>
+            <span class="hidden md:inline">Prev</span>
+          </button>
 
-<!-- Main Content Area -->
-<main id="mainContainer" class="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+          <button
+            id="nextPageBtn"
+            class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors shadow-sm flex items-center gap-2"
+          >
+            <i class="fas fa-chevron-right"></i>
+            <span class="hidden md:inline">Next</span>
+          </button>
 
-  <!-- PDF Viewer Section -->
-  <div class="flex-1 flex flex-col relative bg-gray-100 h-full min-w-0">
+          <span class="text-sm md:text-base text-gray-300 ml-2">
+            Page <span id="pageNum">1</span> / <span id="pageCount">?</span>
+          </span>
+        </div>
 
-    <!-- PDF Toolbar (Dark Mode) -->
-    <div id="pdfToolbar" class="bg-gray-800 border-b border-gray-700 p-3 flex items-center justify-between gap-2 z-10 shadow-xl flex-none">
-      
-      <!-- Page Navigation Group -->
-      <div class="flex items-center gap-2">
-        <button id="prevPageBtn" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors shadow-sm flex items-center gap-2">
-          <i class="fas fa-chevron-left"></i>
-          <span class="hidden md:inline">Prev</span>
-        </button>
-
-        <button id="nextPageBtn" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors shadow-sm flex items-center gap-2">
-          <i class="fas fa-chevron-right"></i>
-          <span class="hidden md:inline">Next</span>
-        </button>
-
-        <span class="text-sm md:text-base text-gray-300 ml-2">
-          Page <span id="pageNum">1</span> / <span id="pageCount">?</span>
-        </span>
+        <!-- Upload Button -->
+        <label
+          class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded cursor-pointer shadow-md transition-colors flex items-center gap-2"
+        >
+          <i class="fas fa-file-upload"></i>
+          <span class="hidden sm:inline">Upload Pattern</span>
+          <span class="sm:hidden">Upload</span>
+          <input type="file" id="fileInput" accept="application/pdf" class="hidden" />
+        </label>
       </div>
 
-      <!-- Upload Button -->
-      <label class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded cursor-pointer shadow-md transition-colors flex items-center gap-2">
-        <i class="fas fa-file-upload"></i> Upload Pattern
-        <input type="file" id="fileInput" accept="application/pdf" class="hidden">
-      </label>
-    </div>
-
-    <!-- Canvas Container -->
-    <div class="flex-1 overflow-hidden relative bg-gray-200">
-      <canvas id="pdfCanvas" class="w-full h-full touch-none"></canvas>
-      <div id="loadingMessage" class="absolute inset-0 flex items-center justify-center text-gray-700 text-lg hidden">Loading...</div>
-    </div>
-  </div>
-
-  <!-- Sidebar: Row Counter, Repeat Counter & Notes -->
-  <aside class="w-full md:w-80 bg-gray-800 flex flex-col border-l border-gray-700 overflow-hidden">
-
-    <!-- Scrolling Area -->
-    <div class="flex-1 overflow-y-auto p-4 space-y-6">
-
-      <!-- Row Counter Section -->
-      <div class="bg-gray-900 rounded-lg p-4 shadow-md">
-        <h2 class="text-lg font-semibold mb-2 text-white">Row Counter</h2>
-        <div class="flex items-center gap-3">
-          <button id="decreaseRow" class="px-3 py-2 bg-red-600 hover:bg-red-500 rounded text-white shadow"><i class="fas fa-minus"></i></button>
-          <span id="rowCountDisplay" class="text-3xl font-bold min-w-[60px] text-center">0</span>
-          <button id="increaseRow" class="px-3 py-2 bg-green-600 hover:bg-green-500 rounded text-white shadow"><i class="fas fa-plus"></i></button>
+      <!-- PDF Canvas Area -->
+      <div class="flex-1 overflow-auto relative bg-gray-200">
+        <div
+          id="pdfCanvasContainer"
+          class="w-full h-full flex items-center justify-center p-4 box-border"
+        >
+          <canvas id="pdfCanvas" class="touch-none"></canvas>
+        </div>
+        <div
+          id="loadingMessage"
+          class="absolute inset-0 flex items-center justify-center text-gray-700 text-lg hidden"
+        >
+          Loading...
         </div>
       </div>
-
-      <!-- Repeat Counter Section -->
-      <div class="bg-gray-900 rounded-lg p-4 shadow-md">
-        <h2 class="text-lg font-semibold mb-2 text-white">Repeat Counter</h2>
-        <div class="flex items-center gap-3">
-          <button id="decreaseRepeat" class="px-3 py-2 bg-red-600 hover:bg-red-500 rounded text-white shadow"><i class="fas fa-minus"></i></button>
-          <span id="repeatCountDisplay" class="text-3xl font-bold min-w-[60px] text-center">0</span>
-          <button id="increaseRepeat" class="px-3 py-2 bg-green-600 hover:bg-green-500 rounded text-white shadow"><i class="fas fa-plus"></i></button>
-        </div>
-      </div>
-
-      <!-- Notes Section -->
-      <div class="bg-gray-900 rounded-lg p-4 shadow-md flex flex-col h-64">
-        <h2 class="text-lg font-semibold mb-2 text-white">Notes</h2>
-        <textarea id="notesArea" class="flex-1 p-2 rounded bg-gray-800 text-gray-200 resize-none border border-gray-700 focus:outline-none"></textarea>
-      </div>
-
     </div>
 
-  </aside>
-</main>
+    <!-- Resizer Handle (desktop) -->
+    <div
+      id="dragHandle"
+      class="hidden md:flex w-1 bg-gray-700 flex-shrink-0"
+      aria-hidden="true"
+    ></div>
 
-<!-- JavaScript -->
-<script>
-const fileInput = document.getElementById("fileInput");
-const pdfCanvas = document.getElementById("pdfCanvas");
-const ctx = pdfCanvas.getContext("2d");
-const loadingMessage = document.getElementById("loadingMessage");
+    <!-- Sidebar: Counters & Notes -->
+    <aside
+      id="sidebar"
+      class="w-full md:w-80 bg-gray-800 flex flex-col border-l border-gray-700 overflow-hidden"
+      style="width: 320px;"
+    >
+      <!-- Scrollable content -->
+      <div class="flex-1 overflow-y-auto p-4 space-y-6">
+        <!-- Row Counter Section -->
+        <div class="bg-gray-900 rounded-lg p-4 shadow-md">
+          <h2 class="text-lg font-semibold mb-2 text-white">Row Counter</h2>
+          <div class="flex items-center gap-3">
+            <button
+              id="decreaseRow"
+              class="px-3 py-2 bg-red-600 hover:bg-red-500 rounded text-white shadow"
+            >
+              <i class="fas fa-minus"></i>
+            </button>
+            <span
+              id="rowCountDisplay"
+              class="text-3xl font-bold min-w-[60px] text-center"
+              >0</span
+            >
+            <button
+              id="increaseRow"
+              class="px-3 py-2 bg-green-600 hover:bg-green-500 rounded text-white shadow"
+            >
+              <i class="fas fa-plus"></i>
+            </button>
+          </div>
+        </div>
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+        <!-- Repeat Counter Section -->
+        <div class="bg-gray-900 rounded-lg p-4 shadow-md">
+          <h2 class="text-lg font-semibold mb-2 text-white">Repeat Counter</h2>
+          <div class="flex items-center gap-3">
+            <button
+              id="decreaseRepeat"
+              class="px-3 py-2 bg-red-600 hover:bg-red-500 rounded text-white shadow"
+            >
+              <i class="fas fa-minus"></i>
+            </button>
+            <span
+              id="repeatCountDisplay"
+              class="text-3xl font-bold min-w-[60px] text-center"
+              >0</span
+            >
+            <button
+              id="increaseRepeat"
+              class="px-3 py-2 bg-green-600 hover:bg-green-500 rounded text-white shadow"
+            >
+              <i class="fas fa-plus"></i>
+            </button>
+          </div>
+        </div>
 
-let pdfDoc = null;
-let currentPage = 1;
-let scale = 1.5;
+        <!-- Notes Section -->
+        <div class="bg-gray-900 rounded-lg p-4 shadow-md flex flex-col h-64">
+          <h2 class="text-lg font-semibold mb-2 text-white">Notes</h2>
+          <textarea
+            id="notesArea"
+            class="flex-1 p-2 rounded bg-gray-800 text-gray-200 resize-none border border-gray-700 focus:outline-none"
+          ></textarea>
+        </div>
+      </div>
+    </aside>
+  </main>
 
-// Load PDF
-fileInput.addEventListener("change", (e) => {
-  const file = e.target.files[0];
-  if (file && file.type === "application/pdf") {
-    const reader = new FileReader();
-    reader.onload = function(event) {
-      const pdfData = event.target.result;
-      loadPDF(pdfData);
+  <!-- JavaScript -->
+  <script>
+    const fileInput = document.getElementById("fileInput");
+    const pdfCanvas = document.getElementById("pdfCanvas");
+    const ctx = pdfCanvas.getContext("2d");
+    const loadingMessage = document.getElementById("loadingMessage");
+    const pdfCanvasContainer = document.getElementById("pdfCanvasContainer");
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+    let pdfDoc = null;
+    let currentPage = 1;
+
+    // Load PDF from file input
+    fileInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (file && file.type === "application/pdf") {
+        const reader = new FileReader();
+        reader.onload = function (event) {
+          const pdfData = event.target.result;
+          loadPDF(pdfData);
+        };
+        reader.readAsArrayBuffer(file);
+      }
+    });
+
+    async function renderPage(num) {
+      if (!pdfDoc) return;
+
+      loadingMessage.classList.remove("hidden");
+
+      const page = await pdfDoc.getPage(num);
+
+      // Start with scale = 1, then fit to container width
+      const initialViewport = page.getViewport({ scale: 1 });
+      const containerWidth =
+        pdfCanvasContainer.clientWidth || window.innerWidth;
+
+      const fitScale = containerWidth / initialViewport.width;
+      const scale = fitScale; // you can clamp this if you want a max
+
+      const viewport = page.getViewport({ scale });
+
+      pdfCanvas.width = viewport.width;
+      pdfCanvas.height = viewport.height;
+
+      await page.render({ canvasContext: ctx, viewport }).promise;
+
+      loadingMessage.classList.add("hidden");
+      document.getElementById("pageNum").textContent = num;
+    }
+
+    async function loadPDF(data) {
+      pdfDoc = await pdfjsLib.getDocument(data).promise;
+      document.getElementById("pageCount").textContent = pdfDoc.numPages;
+      currentPage = 1;
+      renderPage(currentPage);
+    }
+
+    // Navigation buttons
+    document
+      .getElementById("prevPageBtn")
+      .addEventListener("click", () => {
+        if (!pdfDoc || currentPage <= 1) return;
+        currentPage--;
+        renderPage(currentPage);
+      });
+
+    document
+      .getElementById("nextPageBtn")
+      .addEventListener("click", () => {
+        if (!pdfDoc || currentPage >= pdfDoc.numPages) return;
+        currentPage++;
+        renderPage(currentPage);
+      });
+
+    // Re-fit page when window resizes
+    window.addEventListener("resize", () => {
+      if (pdfDoc) {
+        renderPage(currentPage);
+      }
+    });
+
+    // Row counter
+    let rowCount = 0;
+    const rowDisplay = document.getElementById("rowCountDisplay");
+    document.getElementById("increaseRow").onclick = () => {
+      rowCount++;
+      rowDisplay.textContent = rowCount;
     };
-    reader.readAsArrayBuffer(file);
-  }
-});
+    document.getElementById("decreaseRow").onclick = () => {
+      if (rowCount > 0) rowCount--;
+      rowDisplay.textContent = rowCount;
+    };
 
-// Render PDF Page
-async function renderPage(num) {
-  loadingMessage.classList.remove("hidden");
+    // Repeat counter
+    let repeatCount = 0;
+    const repeatDisplay = document.getElementById("repeatCountDisplay");
+    document.getElementById("increaseRepeat").onclick = () => {
+      repeatCount++;
+      repeatDisplay.textContent = repeatCount;
+    };
+    document.getElementById("decreaseRepeat").onclick = () => {
+      if (repeatCount > 0) repeatCount--;
+      repeatDisplay.textContent = repeatCount;
+    };
 
-  const page = await pdfDoc.getPage(num);
-  const viewport = page.getViewport({ scale });
+    // Sidebar resizer (desktop)
+    const sidebar = document.getElementById("sidebar");
+    const dragHandle = document.getElementById("dragHandle");
+    const mainContainer = document.getElementById("mainContainer");
 
-  pdfCanvas.width = viewport.width;
-  pdfCanvas.height = viewport.height;
+    let isDragging = false;
 
-  await page.render({ canvasContext: ctx, viewport }).promise;
+    dragHandle.addEventListener("mousedown", (e) => {
+      isDragging = true;
+      document.body.style.userSelect = "none";
+      e.preventDefault();
+    });
 
-  loadingMessage.classList.add("hidden");
-  document.getElementById("pageNum").textContent = num;
-}
+    window.addEventListener("mousemove", (e) => {
+      if (!isDragging) return;
 
-async function loadPDF(data) {
-  pdfDoc = await pdfjsLib.getDocument(data).promise;
-  document.getElementById("pageCount").textContent = pdfDoc.numPages;
-  renderPage(currentPage = 1);
-}
+      const mainRect = mainContainer.getBoundingClientRect();
+      const newSidebarWidth = mainRect.right - e.clientX;
 
-// Navigation
-document.getElementById("prevPageBtn").addEventListener("click", () => {
-  if (currentPage <= 1) return;
-  renderPage(--currentPage);
-});
+      const minWidth = 220;
+      const maxWidth = 500;
+      const clampedWidth = Math.min(
+        maxWidth,
+        Math.max(minWidth, newSidebarWidth)
+      );
 
-document.getElementById("nextPageBtn").addEventListener("click", () => {
-  if (currentPage >= pdfDoc.numPages) return;
-  renderPage(++currentPage);
-});
+      sidebar.style.width = clampedWidth + "px";
 
-// Row counter
-let rowCount = 0;
-document.getElementById("increaseRow").onclick = () => {
-  rowCount++;
-  document.getElementById("rowCountDisplay").textContent = rowCount;
-};
-document.getElementById("decreaseRow").onclick = () => {
-  if (rowCount > 0) rowCount--;
-  document.getElementById("rowCountDisplay").textContent = rowCount;
-};
+      // Re-render PDF so it re-fits into its new space
+      if (pdfDoc) {
+        renderPage(currentPage);
+      }
+    });
 
-// Repeat counter
-let repeatCount = 0;
-document.getElementById("increaseRepeat").onclick = () => {
-  repeatCount++;
-  document.getElementById("repeatCountDisplay").textContent = repeatCount;
-};
-document.getElementById("decreaseRepeat").onclick = () => {
-  if (repeatCount > 0) repeatCount--;
-  document.getElementById("repeatCountDisplay").textContent = repeatCount;
-};
-
-</script>
-
+    window.addEventListener("mouseup", () => {
+      if (isDragging) {
+        isDragging = false;
+        document.body.style.userSelect = "";
+      }
+    });
+  </script>
 </body>
 </html>
