@@ -28,39 +28,35 @@
       overscroll-behavior: none;
     }
 
-    /* Keep canvas from stretching; use intrinsic size */
-    #pdfCanvas {
-      display: block;
-      max-width: 100%;
-      height: auto;
-      background: white;
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
-    }
-
     /* Scrollable, centered PDF container */
     #pdfCanvasContainer {
       overflow: auto;
       display: flex;
-      justify-content: center;
-      align-items: flex-start;
-    }
-
-    /* Wrapper so we can overlay highlight on top of canvas */
-    #pdfWrapper {
+      flex-direction: column;
+      align-items: center;
       position: relative;
     }
 
-    /* Row highlight bar */
+    /* Each page canvas */
+    .pdf-page-canvas {
+      display: block;
+      background: white;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+      margin-bottom: 1.5rem;
+    }
+
+    /* Highlight band: fixed in the scroll area, not tied to counters */
     #rowHighlight {
-      position: absolute;
-      left: 0;
-      right: 0;
+      position: sticky;
+      top: 30%;               /* vertical position of the band */
+      width: 100%;
+      max-width: 1000px;      /* just to roughly match page width */
       height: 40px;
-      background: rgba(14, 165, 233, 0.2); /* tailwind sky-500-ish */
+      background: rgba(14, 165, 233, 0.2);
       border-top: 1px solid rgba(56, 189, 248, 0.8);
       border-bottom: 1px solid rgba(56, 189, 248, 0.8);
-      cursor: grab;
-      display: none; /* hidden until a PDF is loaded */
+      pointer-events: none;
+      z-index: 20;
     }
 
     /* Resizer styling (desktop only) */
@@ -85,6 +81,9 @@
       }
       #dragHandle {
         display: none !important;
+      }
+      #rowHighlight {
+        max-width: 100%;
       }
     }
 
@@ -112,29 +111,10 @@
         id="pdfToolbar"
         class="bg-gray-800 border-b border-gray-700 p-3 flex items-center justify-between gap-2 z-10 shadow-xl flex-none"
       >
-        <!-- Left side: navigation + zoom -->
+        <!-- Left side: info + zoom -->
         <div class="flex items-center gap-4">
-          <!-- Page Navigation Group -->
-          <div class="flex items-center gap-2">
-            <button
-              id="prevPageBtn"
-              class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors shadow-sm flex items-center gap-2"
-            >
-              <i class="fas fa-chevron-left"></i>
-              <span class="hidden md:inline">Prev</span>
-            </button>
-
-            <button
-              id="nextPageBtn"
-              class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors shadow-sm flex items-center gap-2"
-            >
-              <i class="fas fa-chevron-right"></i>
-              <span class="hidden md:inline">Next</span>
-            </button>
-
-            <span class="text-sm md:text-base text-gray-300 ml-2">
-              Page <span id="pageNum">1</span> / <span id="pageCount">?</span>
-            </span>
+          <div class="text-sm md:text-base text-gray-300">
+            Pages: <span id="pageCount">0</span>
           </div>
 
           <!-- Zoom Controls -->
@@ -179,16 +159,15 @@
         </div>
       </div>
 
-      <!-- PDF Canvas Area -->
+      <!-- PDF Pages Area -->
       <div class="flex-1 overflow-auto relative bg-gray-200">
         <div
           id="pdfCanvasContainer"
           class="w-full h-full p-4 box-border"
         >
-          <div id="pdfWrapper">
-            <canvas id="pdfCanvas" class="touch-none"></canvas>
-            <div id="rowHighlight"></div>
-          </div>
+          <div id="pdfPages" class="w-full flex flex-col items-center"></div>
+          <!-- Highlight band floats over pages -->
+          <div id="rowHighlight" class="hidden"></div>
         </div>
         <div
           id="loadingMessage"
@@ -254,10 +233,18 @@
               <i class="fas fa-plus"></i>
             </button>
           </div>
-          <p class="text-xs text-gray-400">
-            Drag the blue bar on the PDF to mark your current row,
-            or nudge it with the + / − buttons.
-          </p>
+
+          <div class="flex items-center justify-between mt-2">
+            <p class="text-xs text-gray-400 pr-2">
+              Scroll to line the blue band up with your current row.
+            </p>
+            <button
+              id="resetRowBtn"
+              class="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-100 whitespace-nowrap"
+            >
+              Reset to 0
+            </button>
+          </div>
         </div>
 
         <!-- Repeat Counter Section -->
@@ -300,6 +287,15 @@
               <i class="fas fa-plus"></i>
             </button>
           </div>
+
+          <div class="flex justify-end mt-2">
+            <button
+              id="resetRepeatBtn"
+              class="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-100 whitespace-nowrap"
+            >
+              Reset to 0
+            </button>
+          </div>
         </div>
 
         <!-- Notes Section -->
@@ -318,16 +314,11 @@
   <script>
     // --- DOM references ---
     const fileInput = document.getElementById("fileInput");
-    const pdfCanvas = document.getElementById("pdfCanvas");
-    const ctx = pdfCanvas.getContext("2d");
-    const loadingMessage = document.getElementById("loadingMessage");
     const pdfCanvasContainer = document.getElementById("pdfCanvasContainer");
-    const pdfWrapper = document.getElementById("pdfWrapper");
+    const pdfPages = document.getElementById("pdfPages");
     const rowHighlight = document.getElementById("rowHighlight");
+    const loadingMessage = document.getElementById("loadingMessage");
 
-    const prevPageBtn = document.getElementById("prevPageBtn");
-    const nextPageBtn = document.getElementById("nextPageBtn");
-    const pageNumEl = document.getElementById("pageNum");
     const pageCountEl = document.getElementById("pageCount");
 
     const zoomInBtn = document.getElementById("zoomInBtn");
@@ -344,6 +335,8 @@
     const setRowBtn = document.getElementById("setRowBtn");
     const repeatInput = document.getElementById("repeatInput");
     const setRepeatBtn = document.getElementById("setRepeatBtn");
+    const resetRowBtn = document.getElementById("resetRowBtn");
+    const resetRepeatBtn = document.getElementById("resetRepeatBtn");
 
     const sidebar = document.getElementById("sidebar");
     const dragHandle = document.getElementById("dragHandle");
@@ -357,17 +350,13 @@
     const STORAGE_PDF_KEY = "knitCompanionPdfBase64";
 
     let pdfDoc = null;
-    let currentPage = 1;
     let rowCount = 0;
     let repeatCount = 0;
     let zoomLevel = 1; // 1 = 100%
-    let highlightYRatio = null; // 0–1 relative vertical position on canvas
 
     const MIN_ZOOM = 0.5;
     const MAX_ZOOM = 3;
     const ZOOM_STEP = 0.1;
-
-    const HIGHLIGHT_HEIGHT = 40;
 
     // Helpers for base64 <-> ArrayBuffer
     function arrayBufferToBase64(buffer) {
@@ -406,13 +395,11 @@
 
     function saveState() {
       const state = {
-        currentPage,
         rowCount,
         repeatCount,
         notes: notesArea.value || "",
         zoomLevel,
         sidebarWidth: sidebar.style.width || "",
-        highlightYRatio,
       };
       safeSave(STORAGE_STATE_KEY, JSON.stringify(state));
     }
@@ -425,10 +412,10 @@
     }
 
     function restoreState() {
-      const stateRaw = safeLoad(STORAGE_STATE_KEY);
-      if (!stateRaw) return null;
+      const raw = safeLoad(STORAGE_STATE_KEY);
+      if (!raw) return;
       try {
-        const state = JSON.parse(stateRaw);
+        const state = JSON.parse(raw);
         if (typeof state.rowCount === "number") {
           rowCount = state.rowCount;
           rowDisplay.textContent = rowCount;
@@ -436,9 +423,6 @@
         if (typeof state.repeatCount === "number") {
           repeatCount = state.repeatCount;
           repeatDisplay.textContent = repeatCount;
-        }
-        if (typeof state.currentPage === "number") {
-          currentPage = state.currentPage;
         }
         if (typeof state.zoomLevel === "number") {
           zoomLevel = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, state.zoomLevel));
@@ -449,89 +433,47 @@
         if (state.sidebarWidth) {
           sidebar.style.width = state.sidebarWidth;
         }
-        if (typeof state.highlightYRatio === "number") {
-          highlightYRatio = state.highlightYRatio;
-        }
         updateZoomLabel();
-        return state;
-      } catch (e) {
-        return null;
-      }
+      } catch (e) {}
     }
 
-    // --- Row highlight helpers ---
-    function showHighlight() {
-      rowHighlight.style.display = "block";
-    }
-
-    function updateHighlightPositionFromRatio() {
-      if (!pdfCanvas.height || highlightYRatio == null) return;
-      const maxTop = pdfCanvas.height - HIGHLIGHT_HEIGHT;
-      let top = highlightYRatio * pdfCanvas.height - HIGHLIGHT_HEIGHT / 2;
-      top = Math.min(maxTop, Math.max(0, top));
-      rowHighlight.style.top = top + "px";
-      rowHighlight.style.height = HIGHLIGHT_HEIGHT + "px";
-    }
-
-    function nudgeHighlight(deltaRows) {
-      if (!pdfCanvas.height) return;
-      showHighlight();
-      const currentTop =
-        parseFloat(rowHighlight.style.top || "0") || 0;
-      const deltaPixels = deltaRows * HIGHLIGHT_HEIGHT;
-      const maxTop = pdfCanvas.height - HIGHLIGHT_HEIGHT;
-      let newTop = currentTop + deltaPixels;
-      newTop = Math.min(maxTop, Math.max(0, newTop));
-      rowHighlight.style.top = newTop + "px";
-      highlightYRatio =
-        (newTop + HIGHLIGHT_HEIGHT / 2) / pdfCanvas.height;
-      saveState();
-    }
-
-    // --- PDF loading + rendering ---
-    async function renderPage(num) {
+    // --- PDF rendering (infinite scroll) ---
+    async function renderAllPages() {
       if (!pdfDoc) return;
-
       loadingMessage.classList.remove("hidden");
+      pdfPages.innerHTML = "";
 
-      const page = await pdfDoc.getPage(num);
+      const numPages = pdfDoc.numPages;
+      pageCountEl.textContent = numPages;
 
-      // Preserve scroll position
-      const prevHeight = pdfCanvas.height || 1;
-      const prevScroll = pdfCanvasContainer.scrollTop;
+      const containerWidth = pdfCanvasContainer.clientWidth || window.innerWidth;
 
-      // Base size with scale=1
-      const initialViewport = page.getViewport({ scale: 1 });
+      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+        const page = await pdfDoc.getPage(pageNum);
 
-      const containerWidth =
-        pdfCanvasContainer.clientWidth || window.innerWidth;
-      const fitScale = containerWidth / initialViewport.width;
-      const scale = fitScale * zoomLevel;
+        const initialViewport = page.getViewport({ scale: 1 });
+        const fitScale = containerWidth / initialViewport.width;
+        const scale = fitScale * zoomLevel;
 
-      const viewport = page.getViewport({ scale });
+        const viewport = page.getViewport({ scale });
 
-      pdfCanvas.width = viewport.width;
-      pdfCanvas.height = viewport.height;
+        const canvas = document.createElement("canvas");
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        canvas.className = "pdf-page-canvas";
 
-      pdfWrapper.style.width = pdfCanvas.width + "px";
-      pdfWrapper.style.height = pdfCanvas.height + "px";
+        const context = canvas.getContext("2d");
 
-      await page.render({ canvasContext: ctx, viewport }).promise;
+        const wrapper = document.createElement("div");
+        wrapper.className = "flex justify-center w-full";
+        wrapper.appendChild(canvas);
+        pdfPages.appendChild(wrapper);
 
-      // Restore scroll position proportionally
-      const heightRatio = pdfCanvas.height / prevHeight;
-      pdfCanvasContainer.scrollTop = prevScroll * heightRatio;
-
-      // Ensure highlight is visible and positioned
-      showHighlight();
-      if (highlightYRatio == null) {
-        // If no saved position, start roughly 1/3 from top
-        highlightYRatio = 0.33;
+        await page.render({ canvasContext: context, viewport }).promise;
       }
-      updateHighlightPositionFromRatio();
 
+      rowHighlight.classList.remove("hidden");
       loadingMessage.classList.add("hidden");
-      pageNumEl.textContent = num;
       saveState();
     }
 
@@ -544,17 +486,7 @@
       }
 
       pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
-      pageCountEl.textContent = pdfDoc.numPages;
-
-      if (
-        !currentPage ||
-        currentPage < 1 ||
-        currentPage > pdfDoc.numPages
-      ) {
-        currentPage = 1;
-      }
-
-      await renderPage(currentPage);
+      await renderAllPages();
     }
 
     // Load from file input and persist to localStorage
@@ -563,12 +495,9 @@
       if (file && file.type === "application/pdf") {
         const reader = new FileReader();
         reader.onload = function (event) {
-          const pdfData = event.target.result; // ArrayBuffer
+          const pdfData = event.target.result;
 
-          // Reset view state
-          currentPage = 1;
           zoomLevel = 1;
-          highlightYRatio = null;
           updateZoomLabel();
 
           const base64 = arrayBufferToBase64(pdfData);
@@ -581,7 +510,7 @@
     });
 
     // Try to restore PDF from localStorage on load
-    (function initFromStorage() {
+    (function init() {
       restoreState();
       const pdfBase64 = safeLoad(STORAGE_PDF_KEY);
       if (pdfBase64) {
@@ -592,23 +521,10 @@
       }
     })();
 
-    // Navigation buttons
-    prevPageBtn.addEventListener("click", () => {
-      if (!pdfDoc || currentPage <= 1) return;
-      currentPage--;
-      renderPage(currentPage);
-    });
-
-    nextPageBtn.addEventListener("click", () => {
-      if (!pdfDoc || currentPage >= pdfDoc.numPages) return;
-      currentPage++;
-      renderPage(currentPage);
-    });
-
-    // Re-fit page when window resizes
+    // Re-render pages when window resizes
     window.addEventListener("resize", () => {
       if (pdfDoc) {
-        renderPage(currentPage);
+        renderAllPages();
       }
     });
 
@@ -620,13 +536,13 @@
     zoomInBtn.addEventListener("click", () => {
       zoomLevel = Math.min(MAX_ZOOM, zoomLevel + ZOOM_STEP);
       updateZoomLabel();
-      if (pdfDoc) renderPage(currentPage);
+      if (pdfDoc) renderAllPages();
     });
 
     zoomOutBtn.addEventListener("click", () => {
       zoomLevel = Math.max(MIN_ZOOM, zoomLevel - ZOOM_STEP);
       updateZoomLabel();
-      if (pdfDoc) renderPage(currentPage);
+      if (pdfDoc) renderAllPages();
     });
 
     // --- Counters & notes ---
@@ -646,13 +562,9 @@
 
     document.getElementById("increaseRow").onclick = () => {
       setRowCount(rowCount + 1);
-      nudgeHighlight(1);
     };
     document.getElementById("decreaseRow").onclick = () => {
-      if (rowCount > 0) {
-        setRowCount(rowCount - 1);
-        nudgeHighlight(-1);
-      }
+      if (rowCount > 0) setRowCount(rowCount - 1);
     };
 
     document.getElementById("increaseRepeat").onclick = () => {
@@ -662,11 +574,20 @@
       if (repeatCount > 0) setRepeatCount(repeatCount - 1);
     };
 
+    resetRowBtn.addEventListener("click", () => {
+      setRowCount(0);
+      rowInput.value = "";
+    });
+
+    resetRepeatBtn.addEventListener("click", () => {
+      setRepeatCount(0);
+      repeatInput.value = "";
+    });
+
     notesArea.addEventListener("input", () => {
       saveState();
     });
 
-    // Manual row input
     function applyRowInput() {
       const val = parseInt(rowInput.value, 10);
       if (!isNaN(val) && val >= 0) {
@@ -687,43 +608,6 @@
     setRepeatBtn.addEventListener("click", applyRepeatInput);
     repeatInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") applyRepeatInput();
-    });
-
-    // --- Row highlight dragging ---
-    let draggingHighlight = false;
-    let dragStartY = 0;
-    let highlightStartTop = 0;
-
-    rowHighlight.addEventListener("mousedown", (e) => {
-      draggingHighlight = true;
-      dragStartY = e.clientY;
-      highlightStartTop =
-        parseFloat(rowHighlight.style.top || "0") || 0;
-      rowHighlight.style.cursor = "grabbing";
-      document.body.style.userSelect = "none";
-      e.preventDefault();
-    });
-
-    window.addEventListener("mousemove", (e) => {
-      if (!draggingHighlight) return;
-      if (!pdfCanvas.height) return;
-
-      const delta = e.clientY - dragStartY;
-      const maxTop = pdfCanvas.height - HIGHLIGHT_HEIGHT;
-      let newTop = highlightStartTop + delta;
-      newTop = Math.min(maxTop, Math.max(0, newTop));
-      rowHighlight.style.top = newTop + "px";
-      highlightYRatio =
-        (newTop + HIGHLIGHT_HEIGHT / 2) / pdfCanvas.height;
-    });
-
-    window.addEventListener("mouseup", () => {
-      if (draggingHighlight) {
-        draggingHighlight = false;
-        rowHighlight.style.cursor = "grab";
-        document.body.style.userSelect = "";
-        saveState();
-      }
     });
 
     // --- Sidebar resizer (desktop) ---
@@ -751,7 +635,7 @@
       sidebar.style.width = clampedWidth + "px";
 
       if (pdfDoc) {
-        renderPage(currentPage);
+        renderAllPages();
       }
     });
 
@@ -769,18 +653,14 @@
       rowCount = 0;
       repeatCount = 0;
       zoomLevel = 1;
-      currentPage = 1;
-      highlightYRatio = null;
       rowDisplay.textContent = "0";
       repeatDisplay.textContent = "0";
       notesArea.value = "";
       updateZoomLabel();
       pdfDoc = null;
-      pageNumEl.textContent = "1";
-      pageCountEl.textContent = "?";
-      const ctx2 = pdfCanvas.getContext("2d");
-      ctx2.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
-      rowHighlight.style.display = "none";
+      pageCountEl.textContent = "0";
+      pdfPages.innerHTML = "";
+      rowHighlight.classList.add("hidden");
     });
   </script>
 </body>
