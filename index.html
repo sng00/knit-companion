@@ -387,4 +387,198 @@
       const containerWidth =
         pdfCanvasContainer.clientWidth || window.innerWidth;
 
-      const fitScale = containerWidth
+      const fitScale = containerWidth / initialViewport.width;
+      const scale = fitScale * zoomLevel;
+
+      const viewport = page.getViewport({ scale });
+
+      pdfCanvas.width = viewport.width;
+      pdfCanvas.height = viewport.height;
+
+      await page.render({ canvasContext: ctx, viewport }).promise;
+
+      loadingMessage.classList.add("hidden");
+      pageNumEl.textContent = num;
+      saveState();
+    }
+
+    async function loadPDF(data) {
+      // Ensure we always feed pdf.js a Uint8Array
+      let pdfData = data;
+      if (data instanceof ArrayBuffer) {
+        pdfData = new Uint8Array(data);
+      } else if (!(data instanceof Uint8Array)) {
+        pdfData = new Uint8Array(data);
+      }
+
+      pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
+      pageCountEl.textContent = pdfDoc.numPages;
+
+      // Ensure page is in range
+      if (!currentPage || currentPage < 1 || currentPage > pdfDoc.numPages) {
+        currentPage = 1;
+      }
+
+      await renderPage(currentPage);
+    }
+
+    // Load from file input and persist to localStorage
+    fileInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (file && file.type === "application/pdf") {
+        const reader = new FileReader();
+        reader.onload = function (event) {
+          const pdfData = event.target.result; // ArrayBuffer
+
+          // Reset view state
+          currentPage = 1;
+          zoomLevel = 1;
+          updateZoomLabel();
+
+          // Save PDF to localStorage as base64 (might fail if too large)
+          const base64 = arrayBufferToBase64(pdfData);
+          safeSave(STORAGE_PDF_KEY, base64);
+
+          loadPDF(pdfData).then(saveState);
+        };
+        reader.readAsArrayBuffer(file);
+      }
+    });
+
+    // Try to restore PDF from localStorage on load
+    (function initFromStorage() {
+      restoreState();
+      const pdfBase64 = safeLoad(STORAGE_PDF_KEY);
+      if (pdfBase64) {
+        try {
+          const buffer = base64ToArrayBuffer(pdfBase64);
+          loadPDF(buffer);
+        } catch (e) {
+          // ignore decode failures
+        }
+      }
+    })();
+
+    // Navigation buttons
+    prevPageBtn.addEventListener("click", () => {
+      if (!pdfDoc || currentPage <= 1) return;
+      currentPage--;
+      renderPage(currentPage);
+    });
+
+    nextPageBtn.addEventListener("click", () => {
+      if (!pdfDoc || currentPage >= pdfDoc.numPages) return;
+      currentPage++;
+      renderPage(currentPage);
+    });
+
+    // Re-fit page when window resizes
+    window.addEventListener("resize", () => {
+      if (pdfDoc) {
+        renderPage(currentPage);
+      }
+    });
+
+    // --- Zoom controls ---
+    function updateZoomLabel() {
+      zoomLabel.textContent = Math.round(zoomLevel * 100) + "%";
+    }
+
+    zoomInBtn.addEventListener("click", () => {
+      zoomLevel = Math.min(MAX_ZOOM, zoomLevel + ZOOM_STEP);
+      updateZoomLabel();
+      if (pdfDoc) renderPage(currentPage);
+    });
+
+    zoomOutBtn.addEventListener("click", () => {
+      zoomLevel = Math.max(MIN_ZOOM, zoomLevel - ZOOM_STEP);
+      updateZoomLabel();
+      if (pdfDoc) renderPage(currentPage);
+    });
+
+    // --- Counters & notes ---
+    document.getElementById("increaseRow").onclick = () => {
+      rowCount++;
+      rowDisplay.textContent = rowCount;
+      saveState();
+    };
+    document.getElementById("decreaseRow").onclick = () => {
+      if (rowCount > 0) rowCount--;
+      rowDisplay.textContent = rowCount;
+      saveState();
+    };
+
+    document.getElementById("increaseRepeat").onclick = () => {
+      repeatCount++;
+      repeatDisplay.textContent = repeatCount;
+      saveState();
+    };
+    document.getElementById("decreaseRepeat").onclick = () => {
+      if (repeatCount > 0) repeatCount--;
+      repeatDisplay.textContent = repeatCount;
+      saveState();
+    };
+
+    notesArea.addEventListener("input", () => {
+      saveState();
+    });
+
+    // --- Sidebar resizer (desktop) ---
+    let isDragging = false;
+
+    dragHandle.addEventListener("mousedown", (e) => {
+      isDragging = true;
+      document.body.style.userSelect = "none";
+      e.preventDefault();
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      if (!isDragging) return;
+
+      const mainRect = mainContainer.getBoundingClientRect();
+      const newSidebarWidth = mainRect.right - e.clientX;
+
+      const minWidth = 220;
+      const maxWidth = 500;
+      const clampedWidth = Math.min(
+        maxWidth,
+        Math.max(minWidth, newSidebarWidth)
+      );
+
+      sidebar.style.width = clampedWidth + "px";
+
+      // Re-render PDF so it re-fits into its new space
+      if (pdfDoc) {
+        renderPage(currentPage);
+      }
+    });
+
+    window.addEventListener("mouseup", () => {
+      if (isDragging) {
+        isDragging = false;
+        document.body.style.userSelect = "";
+        saveState();
+      }
+    });
+
+    // --- Clear saved data ---
+    clearStateBtn.addEventListener("click", () => {
+      clearState();
+      // Reset UI
+      rowCount = 0;
+      repeatCount = 0;
+      zoomLevel = 1;
+      currentPage = 1;
+      rowDisplay.textContent = "0";
+      repeatDisplay.textContent = "0";
+      notesArea.value = "";
+      updateZoomLabel();
+      pdfDoc = null;
+      pageNumEl.textContent = "1";
+      pageCountEl.textContent = "?";
+      const ctx2 = pdfCanvas.getContext("2d");
+      ctx2.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
+    });
+  </script>
+</body>
+</html>
