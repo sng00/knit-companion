@@ -8,7 +8,7 @@
   />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Pattern Companion</title>
+  <title>Knit Companion – PDF Pattern Helper</title>
 
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -51,9 +51,6 @@
       position: absolute;
       left: 0;
       right: 0;
-      background: rgba(14, 165, 233, 0.2);
-      border-top: 1px solid rgba(56, 189, 248, 0.8);
-      border-bottom: 1px solid rgba(56, 189, 248, 0.8);
       cursor: grab;
       display: none;
       z-index: 10;
@@ -89,6 +86,13 @@
     }
     input[type="number"] {
       -moz-appearance: textfield;
+    }
+
+    /* Compact mode hides "nice-to-have" panels */
+    .compact-mode .notes-section,
+    .compact-mode .measurement-section,
+    .compact-mode .timer-section {
+      display: none;
     }
   </style>
 </head>
@@ -167,11 +171,11 @@
           </div>
         </div>
 
-        <!-- Right: highlight height + upload + clear -->
+        <!-- Right: highlight, colors, shortcuts, upload, export/import, clear -->
         <div class="flex items-center gap-3 flex-wrap">
           <!-- Highlight height -->
           <div class="flex items-center gap-2">
-            <span class="text-xs text-gray-300">Highlight height</span>
+            <span class="text-xs text-gray-300">Highlight</span>
             <input
               id="highlightHeightSlider"
               type="range"
@@ -182,12 +186,65 @@
             />
           </div>
 
+          <!-- Highlight colors -->
+          <div class="flex items-center gap-1">
+            <button
+              data-color="blue"
+              class="hl-color w-4 h-4 rounded-full border border-white/40 bg-sky-400"
+              title="Blue"
+            ></button>
+            <button
+              data-color="lavender"
+              class="hl-color w-4 h-4 rounded-full border border-white/40 bg-purple-300"
+              title="Lavender"
+            ></button>
+            <button
+              data-color="pink"
+              class="hl-color w-4 h-4 rounded-full border border-white/40 bg-pink-200"
+              title="Light Pink"
+            ></button>
+            <button
+              data-color="yellow"
+              class="hl-color w-4 h-4 rounded-full border border-white/40 bg-yellow-200"
+              title="Yellow"
+            ></button>
+            <button
+              data-color="sage"
+              class="hl-color w-4 h-4 rounded-full border border-white/40 bg-green-200"
+              title="Sage"
+            ></button>
+          </div>
+
+          <!-- Shortcuts -->
+          <button
+            id="toggleShortcutsBtn"
+            class="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-xs rounded text-gray-100 flex items-center gap-1"
+          >
+            <i class="fas fa-keyboard"></i>
+            <span class="hidden sm:inline">Shortcuts</span>
+          </button>
+
+          <!-- Export / Import -->
+          <button
+            id="exportProjectBtn"
+            class="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-xs rounded text-white"
+          >
+            Export
+          </button>
+          <button
+            id="importProjectBtn"
+            class="px-2 py-1 bg-amber-600 hover:bg-amber-500 text-xs rounded text-white"
+          >
+            Import
+          </button>
+          <input type="file" id="importProjectInput" accept="application/json" class="hidden" />
+
           <button
             id="clearStateBtn"
             class="px-3 py-2 bg-red-600 hover:bg-red-500 text-white rounded text-xs md:text-sm shadow-sm"
-            title="Clear saved pattern & state"
+            title="Clear current project (but keep it)"
           >
-            Clear Saved
+            Clear Project
           </button>
 
           <label
@@ -235,6 +292,39 @@
       style="width: 320px;"
     >
       <div class="flex-1 overflow-y-auto p-4 space-y-6">
+        <!-- Project selector -->
+        <div class="bg-gray-900 rounded-lg p-4 shadow-md space-y-3">
+          <div class="flex items-center justify-between gap-2">
+            <h2 class="text-lg font-semibold text-white">Project</h2>
+          </div>
+          <div class="flex items-center gap-2">
+            <select
+              id="projectSelect"
+              class="flex-1 bg-gray-800 border border-gray-700 rounded text-sm px-2 py-1 text-gray-100 focus:outline-none"
+            ></select>
+          </div>
+          <div class="flex flex-wrap gap-2 mt-2 text-xs">
+            <button
+              id="newProjectBtn"
+              class="px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-100"
+            >
+              New
+            </button>
+            <button
+              id="renameProjectBtn"
+              class="px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-100"
+            >
+              Rename
+            </button>
+            <button
+              id="deleteProjectBtn"
+              class="px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-red-300"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+
         <!-- Counters -->
         <div class="bg-gray-900 rounded-lg p-4 shadow-md space-y-3">
           <div class="flex items-center justify-between gap-2">
@@ -336,6 +426,75 @@
           </div>
         </div>
 
+        <!-- Measurement helper -->
+        <div class="bg-gray-900 rounded-lg p-4 shadow-md space-y-3 measurement-section">
+          <div class="flex items-center justify-between gap-2">
+            <h2 class="text-lg font-semibold text-white">Measurement Helper</h2>
+          </div>
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div>
+              <label for="gaugeRowsInput" class="block text-gray-300 mb-1">
+                Rows / inch
+              </label>
+              <input
+                id="gaugeRowsInput"
+                type="number"
+                min="0"
+                step="0.1"
+                class="w-full rounded bg-gray-800 border border-gray-700 text-gray-100 px-2 py-1 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label for="targetInchesInput" class="block text-gray-300 mb-1">
+                Target inches
+              </label>
+              <input
+                id="targetInchesInput"
+                type="number"
+                min="0"
+                step="0.1"
+                class="w-full rounded bg-gray-800 border border-gray-700 text-gray-100 px-2 py-1 focus:outline-none"
+              />
+            </div>
+          </div>
+          <div
+            id="measurementSummary"
+            class="text-xs text-gray-300 mt-2"
+          >
+            Rows needed: — • Progress: —%
+          </div>
+        </div>
+
+        <!-- Timer -->
+        <div class="bg-gray-900 rounded-lg p-4 shadow-md space-y-3 timer-section">
+          <div class="flex items-center justify-between gap-2">
+            <h2 class="text-lg font-semibold text-white">Knitting Timer</h2>
+          </div>
+          <div
+            id="timerDisplay"
+            class="text-2xl font-mono text-emerald-300"
+          >
+            00:00:00
+          </div>
+          <div class="flex gap-2 text-xs">
+            <button
+              id="timerStartPauseBtn"
+              class="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white"
+            >
+              Start
+            </button>
+            <button
+              id="timerResetBtn"
+              class="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-100"
+            >
+              Reset
+            </button>
+          </div>
+          <p class="text-xs text-gray-400">
+            Tracks time for this project only.
+          </p>
+        </div>
+
         <!-- Bookmarks -->
         <div class="bg-gray-900 rounded-lg p-4 shadow-md space-y-3">
           <div class="flex items-center justify-between gap-2">
@@ -361,20 +520,53 @@
         </div>
 
         <!-- Notes -->
-        <div class="bg-gray-900 rounded-lg p-4 shadow-md flex flex-col h-64">
+        <div class="bg-gray-900 rounded-lg p-4 shadow-md flex flex-col h-64 notes-section">
           <h2 class="text-lg font-semibold mb-2 text-white">Notes</h2>
           <textarea
             id="notesArea"
             class="flex-1 p-2 rounded bg-gray-800 text-gray-200 resize-none border border-gray-700 focus:outline-none"
           ></textarea>
         </div>
+
+        <!-- Compact mode toggle -->
+        <div class="bg-gray-900 rounded-lg p-3 shadow-md text-xs flex items-center justify-between">
+          <span class="text-gray-200">Compact mode</span>
+          <label class="inline-flex items-center gap-2 cursor-pointer">
+            <input id="compactModeToggle" type="checkbox" class="accent-blue-500" />
+            <span class="text-gray-200">On</span>
+          </label>
+        </div>
       </div>
     </aside>
   </main>
 
+  <!-- Shortcuts legend -->
+  <div
+    id="shortcutsLegend"
+    class="hidden fixed bottom-4 right-4 bg-gray-900 text-gray-100 text-xs p-3 rounded shadow-lg border border-gray-700 max-w-xs z-50"
+  >
+    <div class="flex justify-between items-center mb-2">
+      <span class="font-semibold">Keyboard shortcuts</span>
+      <button id="closeShortcutsBtn" class="text-gray-400 hover:text-gray-200">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <ul class="space-y-1">
+      <li><code>← / →</code> — Prev / Next page</li>
+      <li><code>R</code> — Row +1 • <code>Shift+R</code> — Row −1</li>
+      <li><code>E</code> — Repeat +1 • <code>Shift+E</code> — Repeat −1</li>
+      <li><code>G</code> — Focus “Go to page”</li>
+      <li><code>B</code> — Quick bookmark</li>
+      <li><code>C</code> — Toggle compact mode</li>
+      <li><code>T</code> — Start/Pause timer</li>
+      <li><code>+</code> / <code>-</code> — Zoom in / out</li>
+      <li><code>?</code> — Toggle this legend</li>
+    </ul>
+  </div>
+
   <!-- JavaScript -->
   <script>
-    // DOM refs
+    // ====== DOM refs ======
     const fileInput = document.getElementById("fileInput");
     const pdfCanvas = document.getElementById("pdfCanvas");
     const ctx = pdfCanvas.getContext("2d");
@@ -392,6 +584,7 @@
     const zoomOutBtn = document.getElementById("zoomOutBtn");
     const zoomLabel = document.getElementById("zoomLabel");
     const highlightHeightSlider = document.getElementById("highlightHeightSlider");
+    const highlightColorButtons = document.querySelectorAll(".hl-color");
 
     const goToPageInput = document.getElementById("goToPageInput");
     const goToPageBtn = document.getElementById("goToPageBtn");
@@ -417,25 +610,100 @@
     const dragHandle = document.getElementById("dragHandle");
     const mainContainer = document.getElementById("mainContainer");
 
+    const gaugeRowsInput = document.getElementById("gaugeRowsInput");
+    const targetInchesInput = document.getElementById("targetInchesInput");
+    const measurementSummary = document.getElementById("measurementSummary");
+
+    const timerDisplay = document.getElementById("timerDisplay");
+    const timerStartPauseBtn = document.getElementById("timerStartPauseBtn");
+    const timerResetBtn = document.getElementById("timerResetBtn");
+
+    const projectSelect = document.getElementById("projectSelect");
+    const newProjectBtn = document.getElementById("newProjectBtn");
+    const renameProjectBtn = document.getElementById("renameProjectBtn");
+    const deleteProjectBtn = document.getElementById("deleteProjectBtn");
+
+    const exportProjectBtn = document.getElementById("exportProjectBtn");
+    const importProjectBtn = document.getElementById("importProjectBtn");
+    const importProjectInput = document.getElementById("importProjectInput");
+
+    const compactModeToggle = document.getElementById("compactModeToggle");
+
+    const toggleShortcutsBtn = document.getElementById("toggleShortcutsBtn");
+    const shortcutsLegend = document.getElementById("shortcutsLegend");
+    const closeShortcutsBtn = document.getElementById("closeShortcutsBtn");
+
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
-    // State & persistence
-    const STORAGE_STATE_KEY = "knitCompanionState";
-    const STORAGE_PDF_KEY = "knitCompanionPdfBase64";
+    // ====== Storage keys ======
+    const OLD_STATE_KEY = "knitCompanionState";
+    const OLD_PDF_KEY = "knitCompanionPdfBase64";
 
+    const PROJECTS_KEY = "knitCompanionProjects";
+    const ACTIVE_PROJECT_KEY = "knitCompanionActiveProjectId";
+    const STATE_PREFIX = "knitCompanionState_";
+    const PDF_PREFIX = "knitCompanionPdf_";
+
+    // ====== Global state (per active project) ======
     let pdfDoc = null;
     let currentPage = 1;
     let rowCount = 0;
     let repeatCount = 0;
     let zoomLevel = 1;
-    let highlightYRatio = null; // 0..1 of canvas height
+    let highlightYRatio = null; // 0..1
     let highlightHeightPx = 40;
-    let bookmarks = []; // {id, name, page}
+    let highlightColorName = "blue";
+    let bookmarks = [];
+
+    let gaugeRowsPerInch = null;
+    let targetLengthInches = null;
+
+    let timerElapsedSec = 0;
+    let timerRunning = false;
+    let timerLastStartMs = null;
+    let timerIntervalId = null;
+
+    let compactMode = false;
+
+    // Projects meta
+    let projectsMeta = []; // [{id, name}]
+    let activeProjectId = null;
 
     const MIN_ZOOM = 0.5;
     const MAX_ZOOM = 3;
     const ZOOM_STEP = 0.1;
+
+    const highlightThemes = {
+      blue: {
+        bg: "rgba(56, 189, 248, 0.25)",
+        border: "rgba(56, 189, 248, 0.9)",
+      },
+      lavender: {
+        bg: "rgba(196, 181, 253, 0.25)",
+        border: "rgba(196, 181, 253, 0.9)",
+      },
+      pink: {
+        bg: "rgba(251, 182, 206, 0.25)",
+        border: "rgba(251, 182, 206, 0.9)",
+      },
+      yellow: {
+        bg: "rgba(253, 224, 71, 0.25)",
+        border: "rgba(253, 224, 71, 0.9)",
+      },
+      sage: {
+        bg: "rgba(187, 247, 208, 0.25)",
+        border: "rgba(187, 247, 208, 0.9)",
+      },
+    };
+
+    // ====== Helpers ======
+    function getStateKey(projectId) {
+      return STATE_PREFIX + projectId;
+    }
+    function getPdfKey(projectId) {
+      return PDF_PREFIX + projectId;
+    }
 
     function arrayBufferToBase64(buffer) {
       let binary = "";
@@ -471,8 +739,209 @@
       }
     }
 
-    function saveState() {
-      const state = {
+    function safeRemove(key) {
+      try {
+        localStorage.removeItem(key);
+      } catch (e) {}
+    }
+
+    function stopTimerInterval() {
+      if (timerIntervalId != null) {
+        clearInterval(timerIntervalId);
+        timerIntervalId = null;
+      }
+    }
+
+    function formatTime(seconds) {
+      const s = Math.max(0, Math.floor(seconds));
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const r = s % 60;
+      const pad = (x) => (x < 10 ? "0" + x : "" + x);
+      return `${pad(h)}:${pad(m)}:${pad(r)}`;
+    }
+
+    // ====== Project management ======
+    function saveProjectsMeta() {
+      safeSave(PROJECTS_KEY, JSON.stringify(projectsMeta));
+      if (activeProjectId) {
+        safeSave(ACTIVE_PROJECT_KEY, activeProjectId);
+      }
+    }
+
+    function renderProjectSelectOptions() {
+      projectSelect.innerHTML = "";
+      projectsMeta.forEach((p) => {
+        const opt = document.createElement("option");
+        opt.value = p.id;
+        opt.textContent = p.name;
+        projectSelect.appendChild(opt);
+      });
+      if (activeProjectId) {
+        projectSelect.value = activeProjectId;
+      }
+    }
+
+    function getActiveProjectMeta() {
+      return projectsMeta.find((p) => p.id === activeProjectId) || null;
+    }
+
+    function createNewProject(name) {
+      const id = "proj-" + Date.now();
+      const meta = { id, name: name || "New Project" };
+      projectsMeta.push(meta);
+      activeProjectId = id;
+      saveProjectsMeta();
+      renderProjectSelectOptions();
+      resetUIToDefaults();
+      renderBookmarksList();
+      applyCompactModeClass();
+      // no pdf yet
+    }
+
+    function deleteActiveProject() {
+      if (!activeProjectId) return;
+      const idx = projectsMeta.findIndex((p) => p.id === activeProjectId);
+      if (idx === -1) return;
+      const meta = projectsMeta[idx];
+      if (!confirm(`Delete project "${meta.name}"? This removes its state from this browser.`)) {
+        return;
+      }
+      safeRemove(getStateKey(activeProjectId));
+      safeRemove(getPdfKey(activeProjectId));
+      projectsMeta.splice(idx, 1);
+      if (projectsMeta.length === 0) {
+        createNewProject("Default Project");
+      } else {
+        activeProjectId = projectsMeta[0].id;
+      }
+      saveProjectsMeta();
+      renderProjectSelectOptions();
+      loadProject(activeProjectId);
+    }
+
+    function migrateOldSingleProjectIfNeeded() {
+      const projectsRaw = safeLoad(PROJECTS_KEY);
+      if (projectsRaw) return; // already using multi-project
+
+      const oldState = safeLoad(OLD_STATE_KEY);
+      const oldPdf = safeLoad(OLD_PDF_KEY);
+
+      const id = "proj-" + Date.now();
+      const meta = { id, name: "Default Project" };
+      projectsMeta = [meta];
+      activeProjectId = id;
+      saveProjectsMeta();
+
+      if (oldState) {
+        safeSave(getStateKey(id), oldState);
+        safeRemove(OLD_STATE_KEY);
+      }
+      if (oldPdf) {
+        safeSave(getPdfKey(id), oldPdf);
+        safeRemove(OLD_PDF_KEY);
+      }
+    }
+
+    function initProjects() {
+      migrateOldSingleProjectIfNeeded();
+
+      const projRaw = safeLoad(PROJECTS_KEY);
+      if (projRaw) {
+        try {
+          projectsMeta = JSON.parse(projRaw) || [];
+        } catch {
+          projectsMeta = [];
+        }
+      }
+      if (!Array.isArray(projectsMeta) || projectsMeta.length === 0) {
+        createNewProject("Default Project");
+      }
+
+      const activeRaw = safeLoad(ACTIVE_PROJECT_KEY);
+      if (activeRaw && projectsMeta.some((p) => p.id === activeRaw)) {
+        activeProjectId = activeRaw;
+      } else {
+        activeProjectId = projectsMeta[0].id;
+      }
+      saveProjectsMeta();
+      renderProjectSelectOptions();
+    }
+
+    function resetUIToDefaults() {
+      stopTimerInterval();
+
+      pdfDoc = null;
+      currentPage = 1;
+      rowCount = 0;
+      repeatCount = 0;
+      zoomLevel = 1;
+      highlightYRatio = null;
+      highlightHeightPx = 40;
+      highlightColorName = "blue";
+      bookmarks = [];
+
+      gaugeRowsPerInch = null;
+      targetLengthInches = null;
+
+      timerElapsedSec = 0;
+      timerRunning = false;
+      timerLastStartMs = null;
+
+      compactMode = false;
+      document.body.classList.remove("compact-mode");
+      compactModeToggle.checked = false;
+
+      pageNumEl.textContent = "1";
+      pageCountEl.textContent = "?";
+      rowDisplay.textContent = "0";
+      repeatDisplay.textContent = "0";
+      notesArea.value = "";
+      zoomLabel.textContent = "100%";
+      highlightHeightSlider.value = highlightHeightPx;
+      highlightYRatio = null;
+      rowHighlight.style.display = "none";
+      timerDisplay.textContent = "00:00:00";
+      timerStartPauseBtn.textContent = "Start";
+
+      gaugeRowsInput.value = "";
+      targetInchesInput.value = "";
+      measurementSummary.textContent = "Rows needed: — • Progress: —%";
+
+      bookmarkNameInput.value = "";
+
+      const ctx2 = pdfCanvas.getContext("2d");
+      ctx2.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
+      bookmarksListEl.innerHTML = "";
+      renderBookmarksList();
+      applyHighlightTheme();
+    }
+
+    function loadProject(projectId) {
+      if (!projectId) return;
+      // save current project first
+      if (activeProjectId && activeProjectId !== projectId) {
+        saveState(); // safe no-op if no active
+      }
+      activeProjectId = projectId;
+      saveProjectsMeta();
+      renderProjectSelectOptions();
+
+      resetUIToDefaults();
+      restoreStateForActiveProject();
+
+      const pdfBase64 = safeLoad(getPdfKey(activeProjectId));
+      if (pdfBase64) {
+        try {
+          const buffer = base64ToArrayBuffer(pdfBase64);
+          loadPDF(buffer);
+        } catch {}
+      }
+    }
+
+    // ====== State save/restore ======
+    function buildStateObject() {
+      return {
         currentPage,
         rowCount,
         repeatCount,
@@ -481,23 +950,30 @@
         sidebarWidth: sidebar.style.width || "",
         highlightYRatio,
         highlightHeightPx,
+        highlightColorName,
         bookmarks,
+        gaugeRowsPerInch,
+        targetLengthInches,
+        timerElapsedSec,
+        timerRunning,
+        timerLastStartMs,
+        compactMode,
       };
-      safeSave(STORAGE_STATE_KEY, JSON.stringify(state));
     }
 
-    function clearState() {
-      try {
-        localStorage.removeItem(STORAGE_STATE_KEY);
-        localStorage.removeItem(STORAGE_PDF_KEY);
-      } catch (e) {}
+    function saveState() {
+      if (!activeProjectId) return;
+      const state = buildStateObject();
+      safeSave(getStateKey(activeProjectId), JSON.stringify(state));
     }
 
-    function restoreState() {
-      const raw = safeLoad(STORAGE_STATE_KEY);
+    function restoreStateForActiveProject() {
+      if (!activeProjectId) return;
+      const raw = safeLoad(getStateKey(activeProjectId));
       if (!raw) return;
       try {
         const state = JSON.parse(raw);
+
         if (typeof state.currentPage === "number") currentPage = state.currentPage;
         if (typeof state.rowCount === "number") {
           rowCount = state.rowCount;
@@ -522,24 +998,73 @@
         if (typeof state.highlightHeightPx === "number") {
           highlightHeightPx = state.highlightHeightPx;
         }
+        if (typeof state.highlightColorName === "string") {
+          highlightColorName = state.highlightColorName;
+        }
         if (Array.isArray(state.bookmarks)) {
           bookmarks = state.bookmarks;
         }
+        if (typeof state.gaugeRowsPerInch === "number") {
+          gaugeRowsPerInch = state.gaugeRowsPerInch;
+          gaugeRowsInput.value = gaugeRowsPerInch;
+        }
+        if (typeof state.targetLengthInches === "number") {
+          targetLengthInches = state.targetLengthInches;
+          targetInchesInput.value = targetLengthInches;
+        }
+        if (typeof state.timerElapsedSec === "number") {
+          timerElapsedSec = state.timerElapsedSec;
+        }
+        if (typeof state.timerRunning === "boolean") {
+          timerRunning = state.timerRunning;
+        }
+        if (typeof state.timerLastStartMs === "number") {
+          timerLastStartMs = state.timerLastStartMs;
+        }
+        if (typeof state.compactMode === "boolean") {
+          compactMode = state.compactMode;
+        }
+
         updateZoomLabel();
         highlightHeightSlider.value = highlightHeightPx;
+        applyHighlightTheme();
         renderBookmarksList();
-      } catch (e) {}
+        updateMeasurementSummary();
+        updateTimerDisplay();
+        applyCompactModeClass();
+
+        if (timerRunning) {
+          const now = Date.now();
+          if (typeof timerLastStartMs === "number") {
+            const diff = Math.floor((now - timerLastStartMs) / 1000);
+            if (diff > 0) timerElapsedSec += diff;
+          }
+          timerLastStartMs = now;
+          startTimerInterval();
+          timerStartPauseBtn.textContent = "Pause";
+        } else {
+          stopTimerInterval();
+          timerStartPauseBtn.textContent = "Start";
+        }
+      } catch {}
     }
 
-    // Highlight helpers
+    // ====== Highlight ======
     function showHighlight() {
       rowHighlight.style.display = "block";
+    }
+
+    function applyHighlightTheme() {
+      const theme = highlightThemes[highlightColorName] || highlightThemes.blue;
+      rowHighlight.style.background = theme.bg;
+      rowHighlight.style.borderTop = "1px solid " + theme.border;
+      rowHighlight.style.borderBottom = "1px solid " + theme.border;
     }
 
     function updateHighlightPositionFromRatio() {
       if (!pdfCanvas.height) return;
       if (highlightYRatio == null) {
-        highlightYRatio = 0.33; // default 1/3 from top
+        highlightYRatio = 0.33;
       }
       const maxTop = pdfCanvas.height - highlightHeightPx;
       let top = highlightYRatio * pdfCanvas.height - highlightHeightPx / 2;
@@ -548,7 +1073,7 @@
       rowHighlight.style.height = highlightHeightPx + "px";
     }
 
-    // PDF rendering
+    // ====== PDF rendering ======
     async function renderPage(num) {
       if (!pdfDoc) return;
 
@@ -568,6 +1093,7 @@
 
       pdfCanvas.width = viewport.width;
       pdfCanvas.height = viewport.height;
+
       pdfWrapper.style.width = pdfCanvas.width + "px";
       pdfWrapper.style.height = pdfCanvas.height + "px";
 
@@ -578,6 +1104,7 @@
 
       showHighlight();
       updateHighlightPositionFromRatio();
+      applyHighlightTheme();
 
       pageNumEl.textContent = num;
       pageCountEl.textContent = pdfDoc.numPages;
@@ -602,199 +1129,82 @@
       await renderPage(currentPage);
     }
 
-    // File input
-    fileInput.addEventListener("change", (e) => {
-      const file = e.target.files[0];
-      if (file && file.type === "application/pdf") {
-        const reader = new FileReader();
-        reader.onload = function (event) {
-          const pdfData = event.target.result;
-          currentPage = 1;
-          zoomLevel = 1;
-          highlightYRatio = null;
-          updateZoomLabel();
-
-          const base64 = arrayBufferToBase64(pdfData);
-          safeSave(STORAGE_PDF_KEY, base64);
-
-          loadPDF(pdfData).then(saveState);
-        };
-        reader.readAsArrayBuffer(file);
+    // ====== Measurement helper ======
+    function updateMeasurementSummary() {
+      if (!gaugeRowsPerInch || !targetLengthInches) {
+        measurementSummary.textContent = "Rows needed: — • Progress: —%";
+        return;
       }
-    });
-
-    // Restore on load
-    (function init() {
-      restoreState();
-      const pdfBase64 = safeLoad(STORAGE_PDF_KEY);
-      if (pdfBase64) {
-        try {
-          const buffer = base64ToArrayBuffer(pdfBase64);
-          loadPDF(buffer);
-        } catch (e) {}
-      }
-    })();
-
-    // Navigation
-    prevPageBtn.addEventListener("click", () => {
-      if (!pdfDoc || currentPage <= 1) return;
-      currentPage--;
-      renderPage(currentPage);
-    });
-
-    nextPageBtn.addEventListener("click", () => {
-      if (!pdfDoc || currentPage >= pdfDoc.numPages) return;
-      currentPage++;
-      renderPage(currentPage);
-    });
-
-    // Go to page
-    function goToPageFromInput() {
-      if (!pdfDoc) return;
-      const val = parseInt(goToPageInput.value, 10);
-      if (isNaN(val)) return;
-      if (val < 1 || val > pdfDoc.numPages) return;
-      currentPage = val;
-      renderPage(currentPage);
+      const rowsNeeded = gaugeRowsPerInch * targetLengthInches;
+      const progress = rowsNeeded > 0 ? (rowCount / rowsNeeded) * 100 : 0;
+      const clamped = Math.max(0, Math.min(999, progress));
+      measurementSummary.textContent = `Rows needed: ${rowsNeeded.toFixed(
+        1
+      )} • Progress: ${clamped.toFixed(1)}%`;
     }
 
-    goToPageBtn.addEventListener("click", goToPageFromInput);
-    goToPageInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") goToPageFromInput();
-    });
-
-    // Resize handling
-    window.addEventListener("resize", () => {
-      if (pdfDoc) {
-        renderPage(currentPage);
-      }
-    });
-
-    // Zoom
-    function updateZoomLabel() {
-      zoomLabel.textContent = Math.round(zoomLevel * 100) + "%";
+    // ====== Timer ======
+    function updateTimerDisplay() {
+      timerDisplay.textContent = formatTime(timerElapsedSec);
     }
 
-    zoomInBtn.addEventListener("click", () => {
-      zoomLevel = Math.min(MAX_ZOOM, zoomLevel + ZOOM_STEP);
-      updateZoomLabel();
-      if (pdfDoc) renderPage(currentPage);
-    });
+    function startTimerInterval() {
+      stopTimerInterval();
+      timerIntervalId = setInterval(() => {
+        if (!timerRunning) return;
+        const now = Date.now();
+        if (typeof timerLastStartMs === "number") {
+          const diff = Math.floor((now - timerLastStartMs) / 1000);
+          timerLastStartMs = now;
+          timerElapsedSec += diff;
+          updateTimerDisplay();
+          saveState();
+        }
+      }, 1000);
+    }
 
-    zoomOutBtn.addEventListener("click", () => {
-      zoomLevel = Math.max(MIN_ZOOM, zoomLevel - ZOOM_STEP);
-      updateZoomLabel();
-      if (pdfDoc) renderPage(currentPage);
-    });
-
-    // Highlight height slider
-    highlightHeightSlider.addEventListener("input", () => {
-      highlightHeightPx = parseInt(highlightHeightSlider.value, 10) || 40;
-      updateHighlightPositionFromRatio();
-      saveState();
-    });
-
-    // Counters & notes
-    function setRowCount(value) {
-      const v = Math.max(0, Number.isFinite(value) ? value : 0);
-      rowCount = v;
-      rowDisplay.textContent = rowCount;
+    function toggleTimer() {
+      if (!timerRunning) {
+        timerRunning = true;
+        timerLastStartMs = Date.now();
+        timerStartPauseBtn.textContent = "Pause";
+        startTimerInterval();
+      } else {
+        timerRunning = false;
+        if (typeof timerLastStartMs === "number") {
+          const diff = Math.floor((Date.now() - timerLastStartMs) / 1000);
+          timerElapsedSec += diff;
+        }
+        timerLastStartMs = null;
+        stopTimerInterval();
+        timerStartPauseBtn.textContent = "Start";
+      }
+      updateTimerDisplay();
       saveState();
     }
 
-    function setRepeatCount(value) {
-      const v = Math.max(0, Number.isFinite(value) ? value : 0);
-      repeatCount = v;
-      repeatDisplay.textContent = repeatCount;
+    function resetTimer() {
+      timerRunning = false;
+      timerElapsedSec = 0;
+      timerLastStartMs = null;
+      stopTimerInterval();
+      timerStartPauseBtn.textContent = "Start";
+      updateTimerDisplay();
       saveState();
     }
 
-    document.getElementById("increaseRow").onclick = () => {
-      setRowCount(rowCount + 1);
-    };
-    document.getElementById("decreaseRow").onclick = () => {
-      if (rowCount > 0) setRowCount(rowCount - 1);
-    };
-
-    document.getElementById("increaseRepeat").onclick = () => {
-      setRepeatCount(repeatCount + 1);
-    };
-    document.getElementById("decreaseRepeat").onclick = () => {
-      if (repeatCount > 0) setRepeatCount(repeatCount - 1);
-    };
-
-    resetRowBtn.addEventListener("click", () => {
-      setRowCount(0);
-      rowInput.value = "";
-    });
-
-    resetRepeatBtn.addEventListener("click", () => {
-      setRepeatCount(0);
-      repeatInput.value = "";
-    });
-
-    notesArea.addEventListener("input", () => {
-      saveState();
-    });
-
-    function applyRowInput() {
-      const val = parseInt(rowInput.value, 10);
-      if (!isNaN(val) && val >= 0) {
-        setRowCount(val);
+    // ====== Compact mode ======
+    function applyCompactModeClass() {
+      if (compactMode) {
+        document.body.classList.add("compact-mode");
+        compactModeToggle.checked = true;
+      } else {
+        document.body.classList.remove("compact-mode");
+        compactModeToggle.checked = false;
       }
     }
-    setRowBtn.addEventListener("click", applyRowInput);
-    rowInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") applyRowInput();
-    });
 
-    function applyRepeatInput() {
-      const val = parseInt(repeatInput.value, 10);
-      if (!isNaN(val) && val >= 0) {
-        setRepeatCount(val);
-      }
-    }
-    setRepeatBtn.addEventListener("click", applyRepeatInput);
-    repeatInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") applyRepeatInput();
-    });
-
-    // Highlight dragging
-    let draggingHighlight = false;
-    let dragStartY = 0;
-    let highlightStartTop = 0;
-
-    rowHighlight.addEventListener("mousedown", (e) => {
-      draggingHighlight = true;
-      dragStartY = e.clientY;
-      highlightStartTop = parseFloat(rowHighlight.style.top || "0") || 0;
-      rowHighlight.style.cursor = "grabbing";
-      document.body.style.userSelect = "none";
-      e.preventDefault();
-    });
-
-    window.addEventListener("mousemove", (e) => {
-      if (!draggingHighlight) return;
-      if (!pdfCanvas.height) return;
-
-      const delta = e.clientY - dragStartY;
-      const maxTop = pdfCanvas.height - highlightHeightPx;
-      let newTop = highlightStartTop + delta;
-      newTop = Math.min(maxTop, Math.max(0, newTop));
-      rowHighlight.style.top = newTop + "px";
-      highlightYRatio = (newTop + highlightHeightPx / 2) / pdfCanvas.height;
-    });
-
-    window.addEventListener("mouseup", () => {
-      if (draggingHighlight) {
-        draggingHighlight = false;
-        rowHighlight.style.cursor = "grab";
-        document.body.style.userSelect = "";
-        saveState();
-      }
-    });
-
-    // Bookmarks
+    // ====== Bookmarks ======
     function renderBookmarksList() {
       bookmarksListEl.innerHTML = "";
       if (!bookmarks.length) {
@@ -811,8 +1221,7 @@
           "flex items-center justify-between gap-2 bg-gray-800 rounded px-2 py-1";
 
         const btn = document.createElement("button");
-        btn.className =
-          "text-left flex-1 text-xs hover:text-blue-300 truncate";
+        btn.className = "text-left flex-1 text-xs hover:text-blue-300 truncate";
         btn.textContent = `${bm.name || "Bookmark"} (p. ${bm.page})`;
         btn.addEventListener("click", () => {
           if (!pdfDoc) return;
@@ -822,8 +1231,7 @@
         });
 
         const delBtn = document.createElement("button");
-        delBtn.className =
-          "text-xs text-gray-400 hover:text-red-400 px-1";
+        delBtn.className = "text-xs text-gray-400 hover:text-red-400 px-1";
         delBtn.innerHTML = '<i class="fas fa-trash"></i>';
         delBtn.addEventListener("click", () => {
           bookmarks = bookmarks.filter((b) => b.id !== bm.id);
@@ -837,81 +1245,466 @@
       });
     }
 
-    addBookmarkBtn.addEventListener("click", () => {
-      if (!pdfDoc) return;
-      const name = bookmarkNameInput.value.trim();
+    function addBookmark(name) {
+      if (!pdfDoc || !activeProjectId) return;
       const bm = {
         id: Date.now().toString(),
         name: name || `Page ${currentPage}`,
         page: currentPage,
       };
       bookmarks.push(bm);
-      bookmarkNameInput.value = "";
       renderBookmarksList();
       saveState();
-    });
+    }
 
-    // Sidebar resizer
-    let isDraggingSidebar = false;
+    // ====== Init ======
+    function init() {
+      initProjects();
+      loadProject(activeProjectId);
 
-    dragHandle.addEventListener("mousedown", (e) => {
-      isDraggingSidebar = true;
-      document.body.style.userSelect = "none";
-      e.preventDefault();
-    });
+      // File input
+      fileInput.addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (file && file.type === "application/pdf") {
+          const reader = new FileReader();
+          reader.onload = function (event) {
+            const pdfData = event.target.result;
+            currentPage = 1;
+            zoomLevel = 1;
+            highlightYRatio = null;
+            updateZoomLabel();
 
-    window.addEventListener("mousemove", (e) => {
-      if (!isDraggingSidebar) return;
+            if (!activeProjectId) return;
+            const base64 = arrayBufferToBase64(pdfData);
+            safeSave(getPdfKey(activeProjectId), base64);
 
-      const mainRect = mainContainer.getBoundingClientRect();
-      const newSidebarWidth = mainRect.right - e.clientX;
+            loadPDF(pdfData).then(saveState);
+          };
+          reader.readAsArrayBuffer(file);
+        }
+      });
 
-      const minWidth = 220;
-      const maxWidth = 500;
-      const clampedWidth = Math.min(
-        maxWidth,
-        Math.max(minWidth, newSidebarWidth)
-      );
+      // Navigation
+      prevPageBtn.addEventListener("click", () => {
+        if (!pdfDoc || currentPage <= 1) return;
+        currentPage--;
+        renderPage(currentPage);
+      });
 
-      sidebar.style.width = clampedWidth + "px";
+      nextPageBtn.addEventListener("click", () => {
+        if (!pdfDoc || currentPage >= pdfDoc.numPages) return;
+        currentPage++;
+        renderPage(currentPage);
+      });
 
-      if (pdfDoc) {
+      function goToPageFromInput() {
+        if (!pdfDoc) return;
+        const val = parseInt(goToPageInput.value, 10);
+        if (isNaN(val)) return;
+        if (val < 1 || val > pdfDoc.numPages) return;
+        currentPage = val;
         renderPage(currentPage);
       }
-    });
 
-    window.addEventListener("mouseup", () => {
-      if (isDraggingSidebar) {
-        isDraggingSidebar = false;
-        document.body.style.userSelect = "";
+      goToPageBtn.addEventListener("click", goToPageFromInput);
+      goToPageInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") goToPageFromInput();
+      });
+
+      // Resize
+      window.addEventListener("resize", () => {
+        if (pdfDoc) {
+          renderPage(currentPage);
+        }
+      });
+
+      // Zoom
+      function updateZoomLabel() {
+        zoomLabel.textContent = Math.round(zoomLevel * 100) + "%";
+      }
+      window.updateZoomLabel = updateZoomLabel; // small hack for restore function
+
+      zoomInBtn.addEventListener("click", () => {
+        zoomLevel = Math.min(MAX_ZOOM, zoomLevel + ZOOM_STEP);
+        updateZoomLabel();
+        if (pdfDoc) renderPage(currentPage);
+      });
+
+      zoomOutBtn.addEventListener("click", () => {
+        zoomLevel = Math.max(MIN_ZOOM, zoomLevel - ZOOM_STEP);
+        updateZoomLabel();
+        if (pdfDoc) renderPage(currentPage);
+      });
+
+      highlightHeightSlider.addEventListener("input", () => {
+        highlightHeightPx = parseInt(highlightHeightSlider.value, 10) || 40;
+        updateHighlightPositionFromRatio();
+        saveState();
+      });
+
+      highlightColorButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const color = btn.getAttribute("data-color");
+          if (!color) return;
+          highlightColorName = color;
+          applyHighlightTheme();
+          saveState();
+        });
+      });
+
+      // Counters & notes
+      function setRowCount(value) {
+        const v = Math.max(0, Number.isFinite(value) ? value : 0);
+        rowCount = v;
+        rowDisplay.textContent = rowCount;
+        updateMeasurementSummary();
         saveState();
       }
-    });
 
-    // Clear saved data
-    clearStateBtn.addEventListener("click", () => {
-      clearState();
-      rowCount = 0;
-      repeatCount = 0;
-      zoomLevel = 1;
-      currentPage = 1;
-      highlightYRatio = null;
-      highlightHeightPx = 40;
-      bookmarks = [];
-      rowDisplay.textContent = "0";
-      repeatDisplay.textContent = "0";
-      notesArea.value = "";
-      updateZoomLabel();
-      pdfDoc = null;
-      pageNumEl.textContent = "1";
-      pageCountEl.textContent = "?";
-      const ctx2 = pdfCanvas.getContext("2d");
-      ctx2.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
-      rowHighlight.style.display = "none";
-      bookmarksListEl.innerHTML = "";
-      renderBookmarksList();
-      highlightHeightSlider.value = 40;
-    });
+      function setRepeatCount(value) {
+        const v = Math.max(0, Number.isFinite(value) ? value : 0);
+        repeatCount = v;
+        saveState();
+        repeatDisplay.textContent = repeatCount;
+      }
+
+      document.getElementById("increaseRow").onclick = () => {
+        setRowCount(rowCount + 1);
+      };
+      document.getElementById("decreaseRow").onclick = () => {
+        if (rowCount > 0) setRowCount(rowCount - 1);
+      };
+
+      document.getElementById("increaseRepeat").onclick = () => {
+        setRepeatCount(repeatCount + 1);
+      };
+      document.getElementById("decreaseRepeat").onclick = () => {
+        if (repeatCount > 0) setRepeatCount(repeatCount - 1);
+      };
+
+      resetRowBtn.addEventListener("click", () => {
+        setRowCount(0);
+        rowInput.value = "";
+      });
+
+      resetRepeatBtn.addEventListener("click", () => {
+        setRepeatCount(0);
+        repeatInput.value = "";
+      });
+
+      notesArea.addEventListener("input", () => {
+        saveState();
+      });
+
+      function applyRowInput() {
+        const val = parseInt(rowInput.value, 10);
+        if (!isNaN(val) && val >= 0) {
+          setRowCount(val);
+        }
+      }
+      setRowBtn.addEventListener("click", applyRowInput);
+      rowInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") applyRowInput();
+      });
+
+      function applyRepeatInput() {
+        const val = parseInt(repeatInput.value, 10);
+        if (!isNaN(val) && val >= 0) {
+          setRepeatCount(val);
+        }
+      }
+      setRepeatBtn.addEventListener("click", applyRepeatInput);
+      repeatInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") applyRepeatInput();
+      });
+
+      // Highlight dragging + click-to-move
+      let draggingHighlight = false;
+      let dragStartY = 0;
+      let highlightStartTop = 0;
+
+      rowHighlight.addEventListener("mousedown", (e) => {
+        draggingHighlight = true;
+        dragStartY = e.clientY;
+        highlightStartTop = parseFloat(rowHighlight.style.top || "0") || 0;
+        rowHighlight.style.cursor = "grabbing";
+        document.body.style.userSelect = "none";
+        e.preventDefault();
+      });
+
+      window.addEventListener("mousemove", (e) => {
+        if (!draggingHighlight) return;
+        if (!pdfCanvas.height) return;
+
+        const delta = e.clientY - dragStartY;
+        const maxTop = pdfCanvas.height - highlightHeightPx;
+        let newTop = highlightStartTop + delta;
+        newTop = Math.min(maxTop, Math.max(0, newTop));
+        rowHighlight.style.top = newTop + "px";
+        highlightYRatio =
+          (newTop + highlightHeightPx / 2) / pdfCanvas.height;
+      });
+
+      window.addEventListener("mouseup", () => {
+        if (draggingHighlight) {
+          draggingHighlight = false;
+          rowHighlight.style.cursor = "grab";
+          document.body.style.userSelect = "";
+          saveState();
+        }
+      });
+
+      // Click to move highlight
+      pdfCanvas.addEventListener("click", (e) => {
+        const rect = pdfCanvas.getBoundingClientRect();
+        const y = e.clientY - rect.top;
+        const maxTop = pdfCanvas.height - highlightHeightPx;
+        let newTop = y - highlightHeightPx / 2;
+        newTop = Math.min(maxTop, Math.max(0, newTop));
+        rowHighlight.style.top = newTop + "px";
+        highlightYRatio =
+          (newTop + highlightHeightPx / 2) / pdfCanvas.height;
+        showHighlight();
+        applyHighlightTheme();
+        saveState();
+      });
+
+      // Bookmarks
+      addBookmarkBtn.addEventListener("click", () => {
+        const name = bookmarkNameInput.value.trim();
+        addBookmark(name);
+        bookmarkNameInput.value = "";
+      });
+
+      // Measurement inputs
+      gaugeRowsInput.addEventListener("input", () => {
+        const val = parseFloat(gaugeRowsInput.value);
+        gaugeRowsPerInch = isNaN(val) ? null : val;
+        updateMeasurementSummary();
+        saveState();
+      });
+
+      targetInchesInput.addEventListener("input", () => {
+        const val = parseFloat(targetInchesInput.value);
+        targetLengthInches = isNaN(val) ? null : val;
+        updateMeasurementSummary();
+        saveState();
+      });
+
+      // Timer
+      timerStartPauseBtn.addEventListener("click", toggleTimer);
+      timerResetBtn.addEventListener("click", resetTimer);
+
+      // Project controls
+      projectSelect.addEventListener("change", () => {
+        const id = projectSelect.value;
+        if (!id) return;
+        loadProject(id);
+      });
+
+      newProjectBtn.addEventListener("click", () => {
+        const name = prompt("New project name:", "New Project");
+        if (name === null) return;
+        createNewProject(name.trim() || "New Project");
+        loadProject(activeProjectId);
+      });
+
+      renameProjectBtn.addEventListener("click", () => {
+        const meta = getActiveProjectMeta();
+        if (!meta) return;
+        const name = prompt("Rename project:", meta.name);
+        if (name === null) return;
+        meta.name = name.trim() || meta.name;
+        saveProjectsMeta();
+        renderProjectSelectOptions();
+      });
+
+      deleteProjectBtn.addEventListener("click", deleteActiveProject);
+
+      // Export / Import
+      exportProjectBtn.addEventListener("click", () => {
+        if (!activeProjectId) return;
+        const meta = getActiveProjectMeta();
+        const stateRaw = safeLoad(getStateKey(activeProjectId));
+        const pdfBase64 = safeLoad(getPdfKey(activeProjectId));
+        const exportObj = {
+          version: 1,
+          project: {
+            id: activeProjectId,
+            name: meta ? meta.name : "Project",
+          },
+          state: stateRaw ? JSON.parse(stateRaw) : buildStateObject(),
+          pdfBase64: pdfBase64 || null,
+        };
+        const blob = new Blob([JSON.stringify(exportObj, null, 2)], {
+          type: "application/json",
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = (meta ? meta.name.replace(/\s+/g, "_") : "project") + ".knit.json";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
+
+      importProjectBtn.addEventListener("click", () => {
+        importProjectInput.value = "";
+        importProjectInput.click();
+      });
+
+      importProjectInput.addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            const data = JSON.parse(ev.target.result);
+            if (!data || !data.project || !data.state) {
+              alert("Invalid project file.");
+              return;
+            }
+            const newId = "proj-" + Date.now();
+            const name = data.project.name || "Imported Project";
+            const meta = { id: newId, name };
+            projectsMeta.push(meta);
+            activeProjectId = newId;
+            saveProjectsMeta();
+            renderProjectSelectOptions();
+
+            safeSave(getStateKey(newId), JSON.stringify(data.state));
+            if (data.pdfBase64) {
+              safeSave(getPdfKey(newId), data.pdfBase64);
+            }
+
+            loadProject(newId);
+          } catch {
+            alert("Could not read project file.");
+          }
+        };
+        reader.readAsText(file);
+      });
+
+      // Compact mode
+      compactModeToggle.addEventListener("change", () => {
+        compactMode = compactModeToggle.checked;
+        applyCompactModeClass();
+        saveState();
+      });
+
+      // Shortcuts legend
+      function toggleShortcuts() {
+        shortcutsLegend.classList.toggle("hidden");
+      }
+
+      toggleShortcutsBtn.addEventListener("click", toggleShortcuts);
+      closeShortcutsBtn.addEventListener("click", () => {
+        shortcutsLegend.classList.add("hidden");
+      });
+
+      // Clear project data
+      clearStateBtn.addEventListener("click", () => {
+        if (!activeProjectId) return;
+        if (!confirm("Clear all state for this project (counters, notes, PDF, etc.)?")) return;
+        safeRemove(getStateKey(activeProjectId));
+        safeRemove(getPdfKey(activeProjectId));
+        resetUIToDefaults();
+      });
+
+      // Sidebar resizer
+      let isDraggingSidebar = false;
+      dragHandle.addEventListener("mousedown", (e) => {
+        isDraggingSidebar = true;
+        document.body.style.userSelect = "none";
+        e.preventDefault();
+      });
+
+      window.addEventListener("mousemove", (e) => {
+        if (!isDraggingSidebar) return;
+
+        const mainRect = mainContainer.getBoundingClientRect();
+        const newSidebarWidth = mainRect.right - e.clientX;
+
+        const minWidth = 220;
+        const maxWidth = 500;
+        const clampedWidth = Math.min(
+          maxWidth,
+          Math.max(minWidth, newSidebarWidth)
+        );
+
+        sidebar.style.width = clampedWidth + "px";
+
+        if (pdfDoc) {
+          renderPage(currentPage);
+        }
+      });
+
+      window.addEventListener("mouseup", () => {
+        if (isDraggingSidebar) {
+          isDraggingSidebar = false;
+          document.body.style.userSelect = "";
+          saveState();
+        }
+      });
+
+      // Keyboard shortcuts
+      window.addEventListener("keydown", (e) => {
+        const tag = (e.target && e.target.tagName) || "";
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+        const key = e.key;
+
+        if (key === "ArrowLeft") {
+          e.preventDefault();
+          prevPageBtn.click();
+        } else if (key === "ArrowRight") {
+          e.preventDefault();
+          nextPageBtn.click();
+        } else if (key === "r" || key === "R") {
+          e.preventDefault();
+          if (e.shiftKey) {
+            document.getElementById("decreaseRow").click();
+          } else {
+            document.getElementById("increaseRow").click();
+          }
+        } else if (key === "e" || key === "E") {
+          e.preventDefault();
+          if (e.shiftKey) {
+            document.getElementById("decreaseRepeat").click();
+          } else {
+            document.getElementById("increaseRepeat").click();
+          }
+        } else if (key === "g" || key === "G") {
+          e.preventDefault();
+          goToPageInput.focus();
+          goToPageInput.select();
+        } else if (key === "b" || key === "B") {
+          e.preventDefault();
+          addBookmark(`Quick bookmark (p. ${currentPage})`);
+        } else if (key === "c" || key === "C") {
+          e.preventDefault();
+          compactMode = !compactMode;
+          applyCompactModeClass();
+          saveState();
+        } else if (key === "t" || key === "T") {
+          e.preventDefault();
+          toggleTimer();
+        } else if (key === "+" || key === "=") {
+          e.preventDefault();
+          zoomInBtn.click();
+        } else if (key === "-") {
+          e.preventDefault();
+          zoomOutBtn.click();
+        } else if (key === "?") {
+          e.preventDefault();
+          toggleShortcuts();
+        }
+      });
+    }
+
+    // Run init
+    init();
   </script>
 </body>
 </html>
