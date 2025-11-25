@@ -439,43 +439,55 @@
 
     // --- PDF rendering (infinite scroll) ---
     async function renderAllPages() {
-      if (!pdfDoc) return;
-      loadingMessage.classList.remove("hidden");
-      pdfPages.innerHTML = "";
+  if (!pdfDoc) return;
 
-      const numPages = pdfDoc.numPages;
-      pageCountEl.textContent = numPages;
+  loadingMessage.classList.remove("hidden");
 
-      const containerWidth = pdfCanvasContainer.clientWidth || window.innerWidth;
+  // 🔹 Remember where we were in the scroll
+  const prevScrollTop = pdfCanvasContainer.scrollTop;
+  const prevScrollHeight = pdfCanvasContainer.scrollHeight || 1;
 
-      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-        const page = await pdfDoc.getPage(pageNum);
+  pdfPages.innerHTML = "";
 
-        const initialViewport = page.getViewport({ scale: 1 });
-        const fitScale = containerWidth / initialViewport.width;
-        const scale = fitScale * zoomLevel;
+  const numPages = pdfDoc.numPages;
+  pageCountEl.textContent = numPages;
 
-        const viewport = page.getViewport({ scale });
+  const containerWidth = pdfCanvasContainer.clientWidth || window.innerWidth;
 
-        const canvas = document.createElement("canvas");
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        canvas.className = "pdf-page-canvas";
+  for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+    const page = await pdfDoc.getPage(pageNum);
 
-        const context = canvas.getContext("2d");
+    const initialViewport = page.getViewport({ scale: 1 });
+    const fitScale = containerWidth / initialViewport.width;
+    const scale = fitScale * zoomLevel;
 
-        const wrapper = document.createElement("div");
-        wrapper.className = "flex justify-center w-full";
-        wrapper.appendChild(canvas);
-        pdfPages.appendChild(wrapper);
+    const viewport = page.getViewport({ scale });
 
-        await page.render({ canvasContext: context, viewport }).promise;
-      }
+    const canvas = document.createElement("canvas");
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    canvas.className = "pdf-page-canvas";
 
-      rowHighlight.classList.remove("hidden");
-      loadingMessage.classList.add("hidden");
-      saveState();
-    }
+    const context = canvas.getContext("2d");
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "flex justify-center w-full";
+    wrapper.appendChild(canvas);
+    pdfPages.appendChild(wrapper);
+
+    await page.render({ canvasContext: context, viewport }).promise;
+  }
+
+  rowHighlight.classList.remove("hidden");
+  loadingMessage.classList.add("hidden");
+
+  // 🔹 Restore scroll to roughly the same place in the document
+  const newScrollHeight = pdfCanvasContainer.scrollHeight || 1;
+  const scrollRatio = prevScrollTop / prevScrollHeight;
+  pdfCanvasContainer.scrollTop = scrollRatio * newScrollHeight;
+
+  saveState();
+}
 
     async function loadPDF(data) {
       let pdfData = data;
